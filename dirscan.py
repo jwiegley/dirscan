@@ -463,7 +463,7 @@ class DirScanner(object):
         self.directory        = directory
         self.dryrun           = dryrun
         self.ignoreFiles      = ignoreFiles
-        self.maxSize          = long(maxSize) if maxSize else None
+        self.maxSize          = None
         self.minimalScan      = minimalScan
         self.mtime            = mtime
         self.onEntryAdded     = onEntryAdded
@@ -475,6 +475,18 @@ class DirScanner(object):
         self.securetag        = securetag
         self.sort             = sort
         self.sudo             = sudo
+
+        if maxSize:
+            if re.match('^[0-9]+$', maxSize):
+                self.maxSize = long(maxSize)
+            else:
+                match = re.match('^([0-9]+)%$', maxSize)
+                if match:
+                    info = os.statvfs(directory)
+                    self.maxSize = ((info.f_frsize * info.f_blocks * 100) /
+                                    int(match.group(1)))
+                else:
+                    l.error("maxSize parameter is incorrect")
 
     def loadState(self):
         self._entries = {}
@@ -1086,7 +1098,7 @@ def processOptions(argv):
         elif o in ('-z', '--minimal-scan'):
             options['minimalScan']     = True
         elif o in ('-M', '--max-size'):
-            options['maxSize']         = long(a)
+            options['maxSize']         = a
         elif o in ('-S', '--secure'):
             options['secure']          = True
         elif o in ('-T', '--securetag'):
