@@ -483,8 +483,8 @@ class DirScanner(object):
                 match = re.match('^([0-9]+)%$', maxSize)
                 if match:
                     info = os.statvfs(directory)
-                    self.maxSize = ((info.f_frsize * info.f_blocks * 100) /
-                                    int(match.group(1)))
+                    self.maxSize = long((info.f_frsize * info.f_blocks) *
+                                        (float(match.group(1))) / 100.0)
                 else:
                     l.error("maxSize parameter is incorrect")
 
