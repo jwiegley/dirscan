@@ -13,6 +13,7 @@ from copy import deepcopy
 from datetime import datetime
 from getopt import getopt, GetoptError
 from operator import attrgetter
+from fcntl import flock, LOCK_SH, LOCK_EX, LOCK_UN
 
 from stat import ST_ATIME, ST_MTIME, ST_MODE, ST_SIZE, S_ISDIR, S_ISREG
 from os.path import (join, expanduser, dirname, basename,
@@ -503,6 +504,9 @@ class DirScanner(object):
         l.info("Loading state data from '%s'" % self.database)
 
         fd = open(self.database, 'rb')
+        l.debug("Acquiring shared lock on '%s'..." % self.database)
+        flock(fd, LOCK_SH)
+        l.debug("Lock acquired")
         try:
             self._entries = cPickle.load(fd)
 
@@ -523,6 +527,9 @@ class DirScanner(object):
             if upgrade:
                 self._entries = upgrade
         finally:
+            l.debug("Releasing shared lock on '%s'..." % self.database)
+            flock(fd, LOCK_UN)
+            l.debug("Lock released")
             fd.close()
 
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
@@ -548,9 +555,15 @@ class DirScanner(object):
         l.debug("Writing updated state data to '%s'" % self.database)
 
         fd = open(self.database, 'wb')
+        l.debug("Acquiring exclusive lock on '%s'..." % self.database)
+        flock(fd, LOCK_EX)
+        l.debug("Lock acquired")
         try:
             cPickle.dump(self._entries, fd)
         finally:
+            l.debug("Releasing exclusive lock on '%s'..." % self.database)
+            flock(fd, LOCK_UN)
+            l.debug("Lock released")
             fd.close()
 
         self._dirty   = False
