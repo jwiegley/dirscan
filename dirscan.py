@@ -122,6 +122,9 @@ class Entry(object):
     def secure(self):
         return self._scanner.secure
 
+    def exists(self):
+        return lexists(self.path)
+
     @property
     def info(self):
         if not self._info:
@@ -597,7 +600,7 @@ class DirScanner(object):
         # timestamp is derived from the file itself (i.e., not just a record of
         # when we first saw it), then trigger an onEntryChanged event.
 
-        else:
+        elif entry.exists():
             # If the `check' option is True, check whether the modtime of
             # `path' is more recent than the modtime of the state database.
 
@@ -609,52 +612,53 @@ class DirScanner(object):
                 if entry.onEntryChanged(contentsChanged = changed):
                     self._dirty = True
 
-            # Delete this path from the `shadow' dictionary, since we've now
-            # dealt with it.  Any entries that remain in `shadow' at the end
-            # will trigger an onEntryRemoved event.
+            # Delete this path from the `shadow' dictionary, since we've
+            # now dealt with it.  Any entries that remain in `shadow' at
+            # the end will trigger an onEntryRemoved event.
 
             assert self._shadow.has_key(entry.path)
             del self._shadow[entry.path]
 
-        # If the `days' option is greater than or equal to zero, do an age
-        # check. If the file is "older" than `days', trigger an onEntryPastLimit
-        # event.
+            # If the `days' option is greater than or equal to zero, do an age
+            # check. If the file is "older" than `days', trigger an
+            # onEntryPastLimit event.
 
-        if self.days >= 0:
-            delta = rightNow - entry.timestamp
-            age   = float(delta.days) + float(delta.seconds) / 86400.0
+            if self.days >= 0:
+                delta = rightNow - entry.timestamp
+                age   = float(delta.days) + float(delta.seconds) / 86400.0
 
-            # The `ages' option, if True, means that we are just to print out
-            # the ages of all entries -- don't do any deleting or pruning.
-            # Updating the database's state is OK, however, so that subsequent
-            # runs of `ages' are correct.
+                # The `ages' option, if True, means that we are just to print
+                # out the ages of all entries -- don't do any deleting or
+                # pruning.  Updating the database's state is OK, however, so
+                # that subsequent runs of `ages' are correct.
 
-            if self.ages:
-                print "%8.1f %s" % (age, entry)
-                return
+                if self.ages:
+                    print "%8.1f %s" % (age, entry)
+                    return
 
-            if age > self._oldest:
-                self._oldest = age
+                if age > self._oldest:
+                    self._oldest = age
 
-            # If the age of the file is greater than `days', trigger the event
-            # `onEntryPastLimit'.
+                # If the age of the file is greater than `days', trigger the
+                # event `onEntryPastLimit'.
 
-            if age >= self.days:
-                l.debug("Entry '%s' is beyond the age limit" % entry)
-                entry.onEntryPastLimit(age)
+                if age >= self.days:
+                    l.debug("Entry '%s' is beyond the age limit" % entry)
+                    entry.onEntryPastLimit(age)
 
-        # At this point, check whether we were dealing with a directory and if
-        # it's now empty. If so, and if the `pruneDirs' option is True, then
-        # delete the directory.
+            # At this point, check whether we were dealing with a directory
+            # and if it's now empty. If so, and if the `pruneDirs' option is
+            # True, then delete the directory.
 
-        if self.pruneDirs and isdir(entry.path) and not os.listdir(entry.path):
-            l.info("Pruning directory '%s'" % entry)
-            entry.remove()
+            if self.pruneDirs and isdir(entry.path) and \
+               not os.listdir(entry.path):
+                l.info("Pruning directory '%s'" % entry)
+                entry.remove()
 
         # Has the entry been removed from disk by any of the above actions? If
         # so, report it having been removed right now.
 
-        if not lexists(entry.path) and entry.onEntryRemoved():
+        if not entry.exists() and entry.onEntryRemoved():
             l.debug("Entry '%s' was removed or found missing" % entry)
             if self._entries.has_key(entry.path):
                 assert isinstance(self._entries[entry.path], Entry)
