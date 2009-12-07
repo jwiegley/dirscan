@@ -4,10 +4,9 @@ The enclosed module, dirscan.py, is intended for doing repeated scans of the
 same directory over time, and taking action based on any changes (or lack
 thereof) found there.
 
-I use it mainly to clean up my trash directory.
-
-See cleanup.py for an example of how I use the script.  I have cron run it
-hourly.  It's designed to be extremely efficient in the use of memory and CPU,
-so that it doesn't bog down the system at all during those hourly runs.
+I use it mainly to clean up my trash directory.  See cleanup.py for an example
+of how I do this, along with its associated launchctl script.  It's designed
+to be extremely efficient in the use of memory and CPU, so that it doesn't bog
+down the system even should you choose to run it hourly (I run it once a day).
 
 John Wiegley <johnw@newartisans.com>
