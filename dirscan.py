@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# dirscan.py, version 1.1
+# dirscan.py, version 2.0
 
 import os
 import re
@@ -15,6 +15,7 @@ from getopt import getopt, GetoptError
 from operator import attrgetter
 from fcntl import flock, LOCK_SH, LOCK_EX, LOCK_UN
 
+from hashlib import sha1
 from stat import ST_ATIME, ST_MTIME, ST_MODE, ST_SIZE, S_ISDIR, S_ISREG
 from os.path import (join, expanduser, dirname, basename,
                      exists, lexists, isfile, isdir, islink)
@@ -24,27 +25,21 @@ rightNow = datetime.now()
 class InvalidArgumentException(Exception): pass
 
 
-# Use my osxtags.py module to interface with metadata tags on OS/X.
-
-try:
-    import osxtags
-except:
-    osxtags = None
-
-
 def delfile(path):
     if lexists(path):
         os.remove(path)
 
 def deltree(path):
-    run('/bin/rm -fr', path)
-    #if not lexists(path): return
-    #for root, dirs, files in os.walk(path, topdown = False):
-    #    for f in files:
-    #        os.remove(join(root, f))
-    #    for d in dirs:
-    #        os.rmdir(join(root, d))
-    #os.rmdir(path)
+    if True:                    # using a dedicated rm is faster
+        run('/bin/rm -fr', path)
+    else:
+        if not lexists(path): return
+        for root, dirs, files in os.walk(path, topdown = False):
+            for f in files:
+                os.remove(join(root, f))
+            for d in dirs:
+                os.rmdir(join(root, d))
+        os.rmdir(path)
 
 
 def run(cmd, path, dryrun = False):
@@ -92,6 +87,8 @@ class Entry(object):
     _prevStamp = None
     _stamp     = None
     _prevInfo  = None
+    _checksum  = None
+    _lastCheck = None
     _info      = None
     _dirSize   = None
 
@@ -146,6 +143,11 @@ class Entry(object):
         return datetime.fromtimestamp(self.info[ST_MTIME])
 
     @property
+    def lastCheckedTime(self):
+        # Clear the cached info, since it may have changed
+        return self._lastCheck
+
+    @property
     def size(self):
         # Clear the cached info, since it may have changed
         if not self._scanner.cacheAttrs:
@@ -164,11 +166,64 @@ class Entry(object):
         else:
             return 0L
 
+    @property
+    def checksum(self):
+        # Clear the cached info, since it may have changed
+        if not self._scanner.cacheAttrs:
+            self._checksum = None
+        if self.isRegularFile():
+            if not self._checksum:
+                m = sha1()
+                l.debug("Computing SHA1 for: %s" % self.path)
+                with open(self.path, "rb") as fd:
+                    data = fd.read(8192)
+                    while data:
+                        m.update(data)
+                        data = fd.read(8192)
+                self._checksum  = m.hexdigest()
+                self._lastCheck = rightNow
+                # Make sure that this checksum calculation is written
+                self._scanner._dirty = True
+            return self._checksum
+        else:
+            return None
+
     def contentsHaveChanged(self):
         if not self._prevInfo:
             return False
         self._info = None
-        return self.info[ST_MTIME] != self._prevInfo[ST_MTIME]
+
+        if self.info[ST_MTIME] != self._prevInfo[ST_MTIME]:
+            l.debug("Modification time changed: %s" % self.path)
+            if self._scanner.useChecksum:
+                csum = self._checksum
+                self._checksum = None
+                if not csum:
+                    csum = self.checksum
+                else:
+                    return self.checksum != csum
+            return True
+
+        elif self._scanner.useChecksumAlways:
+            checkContents = True
+            if self._scanner.checkWindow:
+                lastCheck = self.lastCheckedTime
+                if lastCheck:
+                    days = (rightNow - lastCheck).days
+                    l.debug("Content checksum stale by %d days: %s" %
+                            (days, self.path))
+                    checkContents = days >= self._scanner.checkWindow
+                    if checkContents:
+                        l.debug("Content checksum stale (by %d days): %s" %
+                                (days, self.path))
+            if checkContents:
+                csum = self._checksum
+                self._checksum = None
+                if not csum:
+                    csum = self.checksum
+                return self.checksum != csum
+
+        return False
 
     def getTimestamp(self):
         if self._scanner.atime:
@@ -274,11 +329,6 @@ class Entry(object):
 
         if isfile(self.path) or islink(self.path):
             secure = self.secure
-            if not secure and self._scanner.securetag and osxtags and \
-               osxtags.hastag(self.path, self._scanner.securetag):
-                secure = True
-                l.debug("Securely deleting '%s' as it had the tag '%s' set" %
-                        (self, self._scanner.securetag))
             try:
                 if secure:
                     if not run('/bin/srm -f', self.path, self.dryrun):
@@ -387,28 +437,30 @@ class DirScanner(object):
         return self._entries
 
     def __init__(self,
-                 directory        = None,
-                 ages             = False, # this is a very odd option
-                 atime            = False,
-                 cacheAttrs       = False,
-                 check            = False,
-                 database         = '.files.dat',
-                 days             = -1.0,
-                 depth            = -1,
-                 dryrun           = False,
-                 ignoreFiles      = None,
-                 maxSize          = None,
-                 minimalScan      = False,
-                 mtime            = False,
-                 onEntryAdded     = None,
-                 onEntryChanged   = None,
-                 onEntryRemoved   = None,
-                 onEntryPastLimit = None,
-                 pruneDirs        = False,
-                 secure           = False,
-                 securetag        = None,
-                 sort             = False,
-                 sudo             = False):
+                 directory         = None,
+                 ages              = False, # this is a very odd option
+                 atime             = False,
+                 cacheAttrs        = False,
+                 check             = False,
+                 checkWindow       = None,
+                 database          = '.files.dat',
+                 days              = -1.0,
+                 depth             = -1,
+                 dryrun            = False,
+                 ignoreFiles       = None,
+                 maxSize           = None,
+                 minimalScan       = False,
+                 mtime             = False,
+                 onEntryAdded      = None,
+                 onEntryChanged    = None,
+                 onEntryRemoved    = None,
+                 onEntryPastLimit  = None,
+                 pruneDirs         = False,
+                 secure            = False,
+                 sort              = False,
+                 sudo              = False,
+                 useChecksum       = False,
+                 useChecksumAlways = False):
 
         # Check the validity of all arguments and their types (if applicable)
 
@@ -431,7 +483,7 @@ class DirScanner(object):
 
         if not ignoreFiles:
             l.debug("Initializing `ignoreFiles' to []")
-            ignoreFiles = []
+            ignoreFiles = ['^\.files\.dat$', '^\.DS_Store$', '^\.localized$']
 
         if not isinstance(ignoreFiles, list):
             msg = "`ignoreFiles' must be of list type"
@@ -445,11 +497,6 @@ class DirScanner(object):
             msg = "`database' must be of string type"
             l.exception(msg); raise InvalidArgumentException(msg)
 
-        base = basename(database)
-        if base not in ignoreFiles:
-            l.debug("Adding '%s' to `ignoreFiles'" % base)
-            ignoreFiles.append(base)
-
         if os.sep not in database:
             database = join(directory, database)
             l.debug("Expanding `database' to '%s'" % database)
@@ -457,28 +504,30 @@ class DirScanner(object):
         if minimalScan and depth != 0:
             l.warning("Using minimalScan when depth != 0 may cause problems")
 
-        self.ages             = ages
-        self.atime            = atime
-        self.cacheAttrs       = cacheAttrs
-        self.check            = check
-        self.database         = database
-        self.days             = days
-        self.depth            = depth
-        self.directory        = directory
-        self.dryrun           = dryrun
-        self.ignoreFiles      = ignoreFiles
-        self.maxSize          = None
-        self.minimalScan      = minimalScan
-        self.mtime            = mtime
-        self.onEntryAdded     = onEntryAdded
-        self.onEntryChanged   = onEntryChanged
-        self.onEntryRemoved   = onEntryRemoved
-        self.onEntryPastLimit = onEntryPastLimit
-        self.pruneDirs        = pruneDirs
-        self.secure           = secure
-        self.securetag        = securetag
-        self.sort             = sort
-        self.sudo             = sudo
+        self.ages              = ages
+        self.atime             = atime
+        self.cacheAttrs        = cacheAttrs
+        self.check             = check
+        self.checkWindow       = checkWindow
+        self.database          = database
+        self.days              = days
+        self.depth             = depth
+        self.directory         = directory
+        self.dryrun            = dryrun
+        self.ignoreFiles       = ignoreFiles
+        self.maxSize           = None
+        self.minimalScan       = minimalScan
+        self.mtime             = mtime
+        self.onEntryAdded      = onEntryAdded
+        self.onEntryChanged    = onEntryChanged
+        self.onEntryRemoved    = onEntryRemoved
+        self.onEntryPastLimit  = onEntryPastLimit
+        self.pruneDirs         = pruneDirs
+        self.secure            = secure
+        self.sort              = sort
+        self.sudo              = sudo
+        self.useChecksum       = useChecksum or useChecksumAlways
+        self.useChecksumAlways = useChecksumAlways
 
         if maxSize:
             if re.match('^[0-9]+$', maxSize):
@@ -506,34 +555,33 @@ class DirScanner(object):
 
         l.info("Loading state data from '%s'" % self.database)
 
-        fd = open(self.database, 'rb')
-        l.debug("Acquiring shared lock on '%s'..." % self.database)
-        flock(fd, LOCK_SH)
-        l.debug("Lock acquired")
-        try:
-            self._entries = cPickle.load(fd)
+        with open(self.database, 'rb') as fd:
+            l.debug("Acquiring shared lock on '%s'..." % self.database)
+            flock(fd, LOCK_SH)
+            l.debug("Lock acquired")
+            try:
+                self._entries = cPickle.load(fd)
 
-            # If the state database was created by the older cleanup.py, then
-            # upgrade it.  Otherwise, associated each saved entry object with
-            # this scanner.
+                # If the state database was created by the older cleanup.py, then
+                # upgrade it.  Otherwise, associated each saved entry object with
+                # this scanner.
 
-            upgrade = {}
-            for path, entry in self._entries.items():
-                if isinstance(entry, datetime):
-                    newEntry = self.createEntry(path)
-                    newEntry._stamp = entry
-                    upgrade[path] = newEntry
-                else:
-                    assert isinstance(entry, Entry)
-                    entry._scanner = self
+                upgrade = {}
+                for path, entry in self._entries.items():
+                    if isinstance(entry, datetime):
+                        newEntry = self.createEntry(path)
+                        newEntry._stamp = entry
+                        upgrade[path] = newEntry
+                    else:
+                        assert isinstance(entry, Entry)
+                        entry._scanner = self
 
-            if upgrade:
-                self._entries = upgrade
-        finally:
-            l.debug("Releasing shared lock on '%s'..." % self.database)
-            flock(fd, LOCK_UN)
-            l.debug("Lock released")
-            fd.close()
+                if upgrade:
+                    self._entries = upgrade
+            finally:
+                l.debug("Releasing shared lock on '%s'..." % self.database)
+                flock(fd, LOCK_UN)
+                l.debug("Lock released")
 
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
 
@@ -557,17 +605,16 @@ class DirScanner(object):
 
         l.debug("Writing updated state data to '%s'" % self.database)
 
-        fd = open(self.database, 'wb')
-        l.debug("Acquiring exclusive lock on '%s'..." % self.database)
-        flock(fd, LOCK_EX)
-        l.debug("Lock acquired")
-        try:
-            cPickle.dump(self._entries, fd)
-        finally:
-            l.debug("Releasing exclusive lock on '%s'..." % self.database)
-            flock(fd, LOCK_UN)
-            l.debug("Lock released")
-            fd.close()
+        with open(self.database, 'wb') as fd:
+            l.debug("Acquiring exclusive lock on '%s'..." % self.database)
+            flock(fd, LOCK_EX)
+            l.debug("Lock acquired")
+            try:
+                cPickle.dump(self._entries, fd)
+            finally:
+                l.debug("Releasing exclusive lock on '%s'..." % self.database)
+                flock(fd, LOCK_UN)
+                l.debug("Lock released")
 
         self._dirty   = False
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
@@ -608,7 +655,7 @@ class DirScanner(object):
 
             if changed or entry.timestampHasChanged():
                 l.debug("Entry '%s' %s seems to have changed" %
-                        (entry, 'content' and changed or 'timestamp'))
+                        (entry, 'content' if changed else 'timestamp'))
                 if entry.onEntryChanged(contentsChanged = changed):
                     self._dirty = True
 
@@ -702,8 +749,21 @@ class DirScanner(object):
         for name in items:
             entryPath = join(path, name)
 
-            if name in self.ignoreFiles:
+            ignored = False
+            for pat in self.ignoreFiles:
+                if re.search(pat, name):
+                    ignored = True
+                    break
+            if ignored:
                 l.debug("Ignoring file '%s'" % entryPath)
+                if self._entries.has_key(entryPath):
+                    l.debug("Entry '%s' removed due to being ignored" % entryPath)
+                    del self._entries[entryPath]
+                    for key in self._entries.keys():
+                        if key.startswith(entryPath + '/'):
+                            l.debug("Entry '%s' removed due to being ignored" % key)
+                            del self._entries[key]
+                    self._dirty = True
                 continue
 
             if self._entries.has_key(entryPath):
@@ -761,7 +821,6 @@ class DirScanner(object):
             sudo       If sudo should be used to retry
 
             secure     If removes should be done securely
-            securetag  A tag meaning: securely remove entry
 
         The last three of these are only passed to the handler
         `onEntryPastLimit'.
@@ -791,7 +850,13 @@ class DirScanner(object):
 
         If `check' is True, the modtime of all files will be checked on each
         run, and if they are newer than the last time the state database was
-        changed, then `onEntryChanged' will be called.
+        changed, then `onEntryChanged' will be called.  If `useChecksum' is
+        also true, then the contents of the file is checksummed on modtime
+        change to detect whether the file has really changed.  And if
+        `useChecksumAlways' is true, the content is always checked regardless
+        of the modtimes.  If `checkWindow' is an integer, and
+        `useChecksumAlways' is true, only check file contents if it has been
+        that many days since the last check.
 
         The other case where `onEntryChanged' might be called is if
         `minimalScan' is not used, which causes the timestamps of all files to
@@ -982,6 +1047,9 @@ Where 'options' is one or more of:
     -a, --atime           Base file ages on their last accessed time
     -R, --check           If a file's modtime has changed, reset its age
                            ^ This is only necessary if -m or -a are not used
+        --checksum        If modtimes have changed, confirm using SHA1
+        --checksum-always Always use SHA1 to detect file modification
+        --check-window=X  Only check contents always every X days
 
         --onadded=X       Execute X when an item is first seen in directory
         --onchanged=X     Execute X when an item is changed in directory
@@ -991,9 +1059,6 @@ Where 'options' is one or more of:
                              worry about quoting.  Also, new/changed/removed
                              directories are passed as well as files.  To
                              delete only files: -F "test -f %s && rm -f %s"
-
-    -T, --securetag=X     If an entry is tagged with X, secure delete it
-                           ^ This option requires OS/X and appscript
 
 Defaults:
     cleanup -d ~/.Trash -b .files.dat -w 7 -D 0 -p
@@ -1038,6 +1103,7 @@ def processOptions(argv):
         'ages',                         # -A
         'atime',                        # -a
         'check',                        # -R
+        'check-window=',
         'database=',                    # -b
         'days=',                        # -w
         'depth=',                       # -D
@@ -1052,10 +1118,11 @@ def processOptions(argv):
         'prune-dirs',                   # -p
         'minimal-scan',                 # -z
         'secure',                       # -S
-        'securetag=',                   # -T
         'sort',                         # -o
         'status',                       # -u
         'sudo',                         # -s
+        'checksum',
+        'checksum-always',
         'verbose',                      # -v
         'version' ]                     # -V
 
@@ -1089,6 +1156,8 @@ def processOptions(argv):
         elif o in ('-R', '--check'):
             options['check']           = True
             options['minimalScan']     = False
+        elif o in ('--check-window'):
+            options['checkWindow']     = int(a)
         elif o in ('-b', '--database'):
             options['database']        = a
         elif o in ('-w', '--days'):
@@ -1118,15 +1187,15 @@ def processOptions(argv):
             options['maxSize']         = a
         elif o in ('-S', '--secure'):
             options['secure']          = True
-        elif o in ('-T', '--securetag'):
-            if not osxtags:
-                sys.stderr.write(
-                    "Warning: --securetag used, but osxtags was not found\n")
-            options['securetag']       = a
         elif o in ('-o', '--sort'):
             options['sort']            = True
         elif o in ('-u', '--status'):
             l.basicConfig(level = l.INFO, format = '%(message)s')
+        elif o in ('--checksum'):
+            options['useChecksum']     = True
+        elif o in ('--checksum-always'):
+            options['useChecksum']       = True
+            options['useChecksumAlways'] = True
         elif o in ('-s', '--sudo'):
             options['sudo']            = True
         elif o in ('-v', '--verbose'):
