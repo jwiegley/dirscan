@@ -102,6 +102,9 @@ window = 28
 random.seed()
 
 def verifyContents(entry):
+    if not entry.exists() or entry.isDirectory():
+        return False
+
     checksumSet = False
     if not opts['dryrun']:
         p = subprocess.Popen("xattr -p checksum-sha1 '%s'" % entry.path,
@@ -122,24 +125,36 @@ def verifyContents(entry):
     return True
 
 def alertAdminChanged(entry):
+    if not entry.exists() or entry.isDirectory():
+        return False
     print "CHANGED:", entry.path
     with open(expanduser('~/Desktop/verify.log'), "a") as fd:
         fd.write("%s - CHANGED: %s\n" % (rightNow, entry.path))
     return True
 
 def alertAdminRemoved(entry):
+    if not entry.exists() or entry.isDirectory():
+        return False
     print "REMOVED:", entry.path
-    with open(expanduser('~/Desktop/verify.log'), "a") as fd:
-        fd.write("%s - REMOVED: %s\n" % (rightNow, entry.path))
     return True
 
-for path in ['/Volumes/RAID/Archives',
-             '/Volumes/RAID/Backups',
-             '/Volumes/RAID/Media',
-             '/Volumes/archive',
-             '/Volumes/games',
-             '/Volumes/backup',
-             '/Volumes/media']:
+for path in [ '/Volumes/RAID/Archives'
+            , '/Volumes/RAID/Backups'
+            , '/Volumes/RAID/Media'
+            , '/Volumes/archive'
+            , '/Volumes/games'
+            , '/Volumes/backup'
+            , '/Volumes/media'
+            ]:
+    if not isdir(path) and not re.search('RAID', path):
+        os.mkdir(path)
+        p = subprocess.Popen("/sbin/mount_afp afp://192.168.9.144/%s %s" %
+                             (basename(entry.path), entry.path),
+                             shell = True)
+        sts = os.waitpid(p.pid, 0)
+        if sts[1] != 0:
+            os.rmdir(path)
+        
     if isdir(path):
         DirScanner(directory         = expanduser(path),
                    check             = True,
@@ -153,6 +168,7 @@ for path in ['/Volumes/RAID/Archives',
                                        , '^Saves$'
                                        , '^Cache$'
                                        , '\.dxo$'
+                                       , '^\._'
                                        ],
                    useChecksumAlways = True,
                    onEntryAdded      = verifyContents,

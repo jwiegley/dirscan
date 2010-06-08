@@ -194,7 +194,6 @@ class Entry(object):
         self._info = None
 
         if self.info[ST_MTIME] != self._prevInfo[ST_MTIME]:
-            l.debug("Modification time changed: %s" % self.path)
             if self._scanner.useChecksum:
                 csum = self._checksum
                 self._checksum = None
@@ -210,18 +209,14 @@ class Entry(object):
                 lastCheck = self.lastCheckedTime
                 if lastCheck:
                     days = (rightNow - lastCheck).days
-                    l.debug("Content checksum stale by %d days: %s" %
-                            (days, self.path))
                     checkContents = days >= self._scanner.checkWindow
-                    if checkContents:
-                        l.debug("Content checksum stale (by %d days): %s" %
-                                (days, self.path))
             if checkContents:
                 csum = self._checksum
                 self._checksum = None
-                if not csum:
+                if csum:
+                    return self.checksum != csum
+                else:
                     csum = self.checksum
-                return self.checksum != csum
 
         return False
 
@@ -583,6 +578,9 @@ class DirScanner(object):
                 flock(fd, LOCK_UN)
                 l.debug("Lock released")
 
+        l.info("Loaded state data from '%s' (%d entries)" %
+               (self.database, len(self._entries.keys())))
+
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
 
     def saveState(self):
@@ -737,7 +735,7 @@ class DirScanner(object):
     def _scanEntries(self, path, depth = 0):
         "This is the worker task for scanEntries, called for each directory."
 
-        l.debug("Scanning %s ..." % path)
+        #l.debug("Scanning %s ..." % path)
         try:
             items = os.listdir(path)
             if self.sort:
@@ -755,7 +753,7 @@ class DirScanner(object):
                     ignored = True
                     break
             if ignored:
-                l.debug("Ignoring file '%s'" % entryPath)
+                #l.debug("Ignoring file '%s'" % entryPath)
                 if self._entries.has_key(entryPath):
                     l.debug("Entry '%s' removed due to being ignored" % entryPath)
                     del self._entries[entryPath]
@@ -776,7 +774,7 @@ class DirScanner(object):
             # which allows us to prune directories as they empty out (if
             # `prune' is True). The pruning is done at the end of `scanEntry'.
 
-            if entry.isDirectory() and \
+            if entry.exists() and entry.isDirectory() and \
                (self.depth < 0 or depth < self.depth) and \
                entry.shouldEnterDirectory():
                 self._scanEntries(entryPath, depth + 1)

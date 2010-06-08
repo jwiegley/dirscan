@@ -20,7 +20,7 @@ random.seed()
 args   = None
 debug  = False
 status = False
-window = 28
+window = 14
 opts   = { 'dryrun': False, 'ages': False }
 
 if len(sys.argv) > 1:
