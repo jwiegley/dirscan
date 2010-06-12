@@ -6,11 +6,12 @@ import os
 import re
 import sys
 import cPickle
+import random
 import subprocess
 import logging as l
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from getopt import getopt, GetoptError
 from operator import attrgetter
 from fcntl import flock, LOCK_SH, LOCK_EX, LOCK_UN
@@ -20,6 +21,7 @@ from stat import ST_ATIME, ST_MTIME, ST_MODE, ST_SIZE, S_ISDIR, S_ISREG
 from os.path import (join, expanduser, dirname, basename,
                      exists, lexists, isfile, isdir, islink)
 
+random.seed()
 rightNow = datetime.now()
 
 class InvalidArgumentException(Exception): pass
@@ -181,7 +183,9 @@ class Entry(object):
                         m.update(data)
                         data = fd.read(8192)
                 self._checksum  = m.hexdigest()
-                self._lastCheck = rightNow
+                if self._scanner.checkWindow:
+                    days = random.randint(0, self._scanner.checkWindow - 1)
+                    self._lastCheck = rightNow - timedelta(days)
                 # Make sure that this checksum calculation is written
                 self._scanner._dirty = True
             return self._checksum
@@ -210,6 +214,10 @@ class Entry(object):
                 if lastCheck:
                     days = (rightNow - lastCheck).days
                     checkContents = days >= self._scanner.checkWindow
+                else:
+                    csum = self._checksum
+                    if not csum:
+                        csum = self.checksum
             if checkContents:
                 csum = self._checksum
                 self._checksum = None
