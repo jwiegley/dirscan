@@ -181,6 +181,7 @@ class Entry(object):
             if not self._checksum:
                 m = sha1()
                 l.debug("Computing SHA1 for: %s" % self.path)
+                self._scanner._bytesScanned += self.size
                 with open(self.path, "rb") as fd:
                     data = fd.read(8192)
                     while data:
@@ -477,6 +478,7 @@ class DirScanner(object):
                  secure            = False,
                  sort              = False,
                  sudo              = False,
+                 tempDirectory     = None,
                  useChecksum       = False,
                  useChecksumAlways = False):
 
@@ -544,6 +546,7 @@ class DirScanner(object):
         self.secure            = secure
         self.sort              = sort
         self.sudo              = sudo
+        self.tempDirectory     = tempDirectory
         self.useChecksum       = useChecksum or useChecksumAlways
         self.useChecksumAlways = useChecksumAlways
 
@@ -606,7 +609,7 @@ class DirScanner(object):
 
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
 
-    def saveState(self):
+    def saveState(self, tempDirectory = None):
         if not self.database: return
         if not self._dirty: return
         if self.dryrun: return
@@ -624,21 +627,28 @@ class DirScanner(object):
             l.error("Could not write to database directory '%s'" % databaseDir)
             return
 
-        l.debug("Writing updated state data to '%s'" % self.database)
+        if tempDirectory:
+            database = join(tempDirectory, basename(self.database))
+        else:
+            database = self.database
+        l.debug("Writing updated state data to '%s'" % database)
 
-        with open(self.database, 'wb') as fd:
-            l.debug("Acquiring exclusive lock on '%s'..." % self.database)
+        with open(database, 'wb') as fd:
+            l.debug("Acquiring exclusive lock on '%s'..." % database)
             flock(fd, LOCK_EX)
             l.debug("Lock acquired")
             try:
                 cPickle.dump(self._entries, fd)
+            except:
+                delfile(database)
+                raise
             finally:
-                l.debug("Releasing exclusive lock on '%s'..." % self.database)
+                l.debug("Releasing exclusive lock on '%s'..." % database)
                 flock(fd, LOCK_UN)
                 l.debug("Lock released")
 
         self._dirty   = False
-        self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
+        self._dbMtime = datetime.fromtimestamp(os.stat(database)[ST_MTIME])
 
     def registerEntryClass(self, entryClass):
         if not issubclass(entryClass, Entry):
@@ -804,6 +814,19 @@ class DirScanner(object):
 
             self._scanEntry(entry)
 
+            if self._bytesScanned > (10 * 1000 * 1000 * 1000):
+                self.saveState(self.tempDirectory)
+                self.copyTempDatabase()
+                self._bytesScanned = 0
+
+    def copyTempDatabase(self):
+        if self.tempDirectory:
+            database = join(self.tempDirectory, basename(self.database))
+            if isfile(database):
+                run('sudo /bin/cp -p %%s "%s"' % self.database,
+                    database, self.dryrun)
+                delfile(database)
+
     def scanEntries(self):
         """Scan the given directory, keeping state and acting on any changes.
 
@@ -940,7 +963,11 @@ class DirScanner(object):
                 assert isinstance(entry, Entry)
                 self._scanEntry(entry)
         else:
-            self._scanEntries(self.directory)
+            try:
+                self._bytesScanned = 0
+                self._scanEntries(self.directory)
+            finally:
+                self.copyTempDatabase()
 
         # Anything remaining in the `shadow' dictionary are state entries which
         # no longer exist on disk, so we trigger `onEntryRemoved' for each of
