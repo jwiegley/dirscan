@@ -432,6 +432,16 @@ class Entry(object):
         self._info = None
 
 
+def bytestring(amount):
+    if amount < 1000:
+        return "%d bytes" % amount
+    elif amount < 1000 * 1000:
+        return "%d KB" % (amount / 1000)
+    elif amount < 1000 * 1000 * 1000:
+        return "%.1f MB" % (amount / (1000.0 * 1000.0))
+    elif amount < 1000 * 1000 * 1000 * 1000:
+        return "%.2f GB" % (amount / (1000.0 * 1000.0 * 1000.0))
+
 class DirScanner(object):
     _dbMtime    = None
     _entries    = None
@@ -959,8 +969,8 @@ class DirScanner(object):
         if self.maxSize and self._dirty:
             total_size, size_map = self.computeSizes()
             if total_size > self.maxSize:
-                l.info("Directory exceeds the maximum size (%ld > %ld)" %
-                       (total_size, self.maxSize))
+                l.info("Directory exceeds the maximum size (%s > %s)" %
+                       (bytestring(total_size), bytestring(self.maxSize)))
 
                 sizes = size_map.keys()
                 sizes.sort()
@@ -976,8 +986,8 @@ class DirScanner(object):
                     entries = size_map[size]
                     entries.sort(key = attrgetter('timestamp'))
                     for entry in entries:
-                        l.info("Purging entry %s to reduce size (saves %ld)" %
-                               (entry.path, size))
+                        l.info("Purging entry %s to reduce size (saves %s)" %
+                               (entry.path, bytestring(size)))
 
                         safeRemove(entry)
                         total_size -= size
@@ -987,12 +997,12 @@ class DirScanner(object):
                             break
 
                     if total_size <= self.maxSize:
-                        l.info("Directory is now within size limits (%ld <= %ld)" %
-                               (total_size, self.maxSize))
+                        l.info("Directory is now within size limits (%s <= %s)" %
+                               (bytestring(total_size), bytestring(self.maxSize)))
                         break
             else:
-                l.info("Directory is within size limits (%ld <= %ld)" %
-                       (total_size, self.maxSize))
+                l.info("Directory is within size limits (%s <= %s)" %
+                       (bytestring(total_size), bytestring(self.maxSize)))
 
         # If any changes have been made to the state database, write those
         # changes out before exiting.
