@@ -256,10 +256,10 @@ class Entry(object):
         return self.timestamp != self._prevStamp
 
     def isRegularFile(self):
-        return S_ISREG(self.info[ST_MODE])
+        return self.info and S_ISREG(self.info[ST_MODE])
 
     def isDirectory(self):
-        return S_ISDIR(self.info[ST_MODE])
+        return self.info and S_ISDIR(self.info[ST_MODE])
 
     def shouldEnterDirectory(self):
         return self.isDirectory()
@@ -417,9 +417,10 @@ class Entry(object):
         self._prevStamp = deepcopy(x)
 
         if self._scanner.check:
-            x = self.info; assert x
-            self._prevInfo = deepcopy(x)
-            self._info = None
+            x = self.info
+            if x:
+                self._prevInfo = deepcopy(x)
+                self._info = None
 
         odict = self.__dict__.copy() # copy the dict since we change it
         del odict['_scanner']
