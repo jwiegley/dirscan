@@ -15,10 +15,15 @@ from datetime import *
 from os.path  import *
 from stat     import *
 
+from fcntl import flock, LOCK_SH, LOCK_EX, LOCK_UN
+
 args   = None
 debug  = False
 status = False
 opts   = { 'dryrun': False, 'ages': False }
+
+lockfile = open('/tmp/cleaup.lock', 'wb')
+flock(lockfile, LOCK_EX)
 
 if len(sys.argv) > 1:
     options, args = getopt(sys.argv[1:], 'nvuA', {})
@@ -58,18 +63,20 @@ if not args or "trash" in args:
                    onEntryPastLimit = safeRemove,
                    **opts).scanEntries()
 
-    for name in os.listdir("/Volumes"):
-        path = join("/Volumes", name, ".Trashes", "501")
-        if exists(path):
-            DirScanner(directory        = path,
-                       days             = 14,
-                       cacheAttrs       = True,
-                       maxSize          = '2%',
-                       sudo             = True,
-                       depth            = 0,
-                       minimalScan      = True,
-                       onEntryPastLimit = safeRemove,
-                       **opts).scanEntries()
+    for root in [ "", "RAID" ]:
+        if not isdir(join("/Volumes", root)): continue
+        for name in os.listdir(join("/Volumes", root)):
+            path = join("/Volumes", root, name, ".Trashes", "501")
+            if exists(path):
+                DirScanner(directory        = path,
+                           days             = 14,
+                           cacheAttrs       = True,
+                           maxSize          = '2%',
+                           sudo             = True,
+                           depth            = 0,
+                           minimalScan      = True,
+                           onEntryPastLimit = safeRemove,
+                           **opts).scanEntries()
 
 if not args or "backups" in args:
     DirScanner(directory        = expanduser('~/.emacs.d/backups'),
@@ -97,7 +104,9 @@ if not args or "backups" in args:
 
 ########################################################################
 
-window = 28
+sys.exit(0)
+
+window = 14
 
 random.seed()
 
@@ -118,7 +127,7 @@ def verifyContents(entry):
             checksumSet = True
 
     if not checksumSet:
-        print "ADDED:", entry.path
+        print "ADDED: %s (SHA1 %s)" % (entry.path, entry.checksum)
 
     entry._lastCheck = rightNow - timedelta(random.randint(0, window))
 
@@ -141,20 +150,7 @@ def alertAdminRemoved(entry):
 for path in [ '/Volumes/RAID/Archives'
             , '/Volumes/RAID/Backups'
             , '/Volumes/RAID/Media'
-            , '/Volumes/archive'
-            , '/Volumes/games'
-            , '/Volumes/backup'
-            , '/Volumes/media'
             ]:
-    if not isdir(path) and not re.search('RAID', path):
-        os.mkdir(path)
-        p = subprocess.Popen("/sbin/mount_afp afp://192.168.9.144/%s %s" %
-                             (basename(entry.path), entry.path),
-                             shell = True)
-        sts = os.waitpid(p.pid, 0)
-        if sts[1] != 0:
-            os.rmdir(path)
-        
     if isdir(path):
         DirScanner(directory         = expanduser(path),
                    check             = True,
@@ -162,18 +158,36 @@ for path in [ '/Volumes/RAID/Archives'
                    ignoreFiles       = [ '^\.files\.dat$'
                                        , '^\.DS_Store$'
                                        , '^\.localized$'
+                                       , '^\.git$'
                                        , '\.dtMeta$'
+                                       , '^Settings.plist$'
                                        , '\.sparsebundle$'
                                        , '^[0-9]{18}$'
                                        , '^Saves$'
                                        , '^Cache$'
+                                       , '^Mobile Applications$'
                                        , '\.dxo$'
                                        , '^\._'
+
+                                       , '^AlbumData2\.xml$'
+                                       , '^AlbumData\.xml'
+                                       , '^Metadata Backup$'
+                                       , '^Thumb64Segment\.data$'
+                                       , '^ThumbJPGSegment\.data'
+                                       , '^\.ipspot_update$'
+                                       , '^face\.db$'
+                                       , '^face_blob\.db$'
+                                       , '^iPhotoAux\.db'
+                                       , '^iPhotoMain\.db'
+                                       , '^iPod Photo Cache$'
                                        ],
+                   tempDirectory     = '/Volumes/RAID/.Caches',
                    useChecksumAlways = True,
                    onEntryAdded      = verifyContents,
                    onEntryChanged    = alertAdminChanged,
                    onEntryRemoved    = alertAdminRemoved,
                    **opts).scanEntries()
+
+flock(lockfile, LOCK_UN)
 
 # cleanup.py ends here
