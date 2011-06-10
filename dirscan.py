@@ -127,7 +127,11 @@ class Entry(object):
     @property
     def info(self):
         if not self._info:
-            self._info = os.lstat(self.path)
+            try:
+                self._info = os.lstat(self.path)
+            except:
+                # This can fail if the parent directory no longer exists
+                pass
         return self._info
 
     @property
