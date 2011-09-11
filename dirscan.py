@@ -437,11 +437,11 @@ def bytestring(amount):
     if amount < 1000:
         return "%d bytes" % amount
     elif amount < 1000 * 1000:
-        return "%d KB" % (amount / 1000)
+        return "%d KiB" % (amount / 1000)
     elif amount < 1000 * 1000 * 1000:
-        return "%.1f MB" % (amount / (1000.0 * 1000.0))
+        return "%.1f MiB" % (amount / (1000.0 * 1000.0))
     elif amount < 1000 * 1000 * 1000 * 1000:
-        return "%.2f GB" % (amount / (1000.0 * 1000.0 * 1000.0))
+        return "%.2f GiB" % (amount / (1000.0 * 1000.0 * 1000.0))
 
 class DirScanner(object):
     _dbMtime    = None
