@@ -654,7 +654,7 @@ class DirScanner(object):
         if not issubclass(entryClass, Entry):
             msg = "`entryClass' must be a class type derived from dirscan.Entry"
             l.exception(msg); raise InvalidArgumentException(msg)
-            
+
         self._entryClass = entryClass
 
     def createEntry(self, path):
@@ -988,10 +988,10 @@ class DirScanner(object):
             l.info("No files were beyond the age limit (oldest %.1fd < %.1fd)" %
                    (self._oldest, self.days))
 
-	# Compute the sizes of all files in the directory (if it has changed
-	# at all), to see if we're over the overall limit.  If so, first
-	# remove files that exceed the limit in and of themselves, and then
-	# proceed by using the largest, oldest first.
+        # Compute the sizes of all files in the directory (if it has changed
+        # at all), to see if we're over the overall limit.  If so, first
+        # remove files that exceed the limit in and of themselves, and then
+        # proceed by using the largest, oldest first.
 
         if self.maxSize and self._dirty:
             total_size, size_map = self.computeSizes()
