@@ -139,14 +139,22 @@ class Entry(object):
         # Clear the cached info, since it may have changed
         if not self._scanner.cacheAttrs:
             self._info = None
-        return datetime.fromtimestamp(self.info[ST_ATIME])
+
+        if self.info:
+            return datetime.fromtimestamp(self.info[ST_ATIME])
+        else:
+            return None
 
     @property
     def lastModTime(self):
         # Clear the cached info, since it may have changed
         if not self._scanner.cacheAttrs:
             self._info = None
-        return datetime.fromtimestamp(self.info[ST_MTIME])
+
+        if self.info:
+            return datetime.fromtimestamp(self.info[ST_MTIME])
+        else:
+            return None
 
     @property
     def lastCheckedTime(self):
@@ -414,8 +422,11 @@ class Entry(object):
         return False
 
     def __getstate__(self):
-        x = self.timestamp; assert x
-        self._prevStamp = deepcopy(x)
+        x = self.timestamp
+        if x:
+            self._prevStamp = deepcopy(x)
+        else:
+            self._prevStamp = None
 
         if self._scanner.check:
             x = self.info
