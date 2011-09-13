@@ -585,7 +585,7 @@ class DirScanner(object):
             l.error("No read access to state data in '%s'" % self.database)
             return
 
-        l.info("Loading state data from '%s'" % self.database)
+        l.debug("Loading state data from '%s'" % self.database)
 
         with open(self.database, 'rb') as fd:
             l.debug("Acquiring shared lock on '%s'..." % self.database)
