@@ -76,9 +76,37 @@ if not args or "trash" in args:
                        onEntryPastLimit = safeRemove,
                        **opts).scanEntries()
 
-    if isdir("/Volumes/mybook"):
-        for name in os.listdir("/Volumes/mybook"):
-            path = join("/Volumes", "mybook", name, ".Trashes", "501")
+    if isdir("/Volumes/slim"):
+        for name in os.listdir("/Volumes/slim"):
+            path = join("/Volumes", "slim", name, ".Trashes", "501")
+            if exists(path):
+                DirScanner(directory        = path,
+                           days             = 28,
+                           cacheAttrs       = True,
+                           maxSize          = '2%',
+                           sudo             = True,
+                           depth            = 0,
+                           minimalScan      = True,
+                           onEntryPastLimit = safeRemove,
+                           **opts).scanEntries()
+
+    if isdir("/Volumes/tank"):
+        for name in os.listdir("/Volumes/tank"):
+            path = join("/Volumes", "tank", name, ".Trashes", "501")
+            if exists(path):
+                DirScanner(directory        = path,
+                           days             = 28,
+                           cacheAttrs       = True,
+                           maxSize          = '2%',
+                           sudo             = True,
+                           depth            = 0,
+                           minimalScan      = True,
+                           onEntryPastLimit = safeRemove,
+                           **opts).scanEntries()
+
+    if isdir("/Volumes/vault"):
+        for name in os.listdir("/Volumes/vault"):
+            path = join("/Volumes", "vault", name, ".Trashes", "501")
             if exists(path):
                 DirScanner(directory        = path,
                            days             = 28,
