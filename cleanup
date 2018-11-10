@@ -8,8 +8,6 @@ import subprocess
 import random
 import logging as l
 
-sys.path.append('/Users/johnw/bin/dirscan')
-
 from dirscan  import *
 from datetime import *
 from os.path  import *
