@@ -117,25 +117,27 @@ if not args or "trash" in args:
                            **opts).scanEntries()
 
 if not args or "backups" in args:
-    DirScanner(directory        = '/Users/johnw/.cache/emacs/backups',
-               days             = 28,
-               mtime            = True,
-               sudo             = True,
-               depth            = 0,
-               maxSize          = '10000000000',
-               minimalScan      = True,
-               onEntryPastLimit = safeRemove,
-               **opts).scanEntries()
+    if exists('/Users/johnw/.cache/emacs/backups'):
+        DirScanner(directory        = '/Users/johnw/.cache/emacs/backups',
+                   days             = 28,
+                   mtime            = True,
+                   sudo             = True,
+                   depth            = 0,
+                   maxSize          = '10000000000',
+                   minimalScan      = True,
+                   onEntryPastLimit = safeRemove,
+                   **opts).scanEntries()
 
-    DirScanner(directory        = '/Users/johnw/.cache/iTerm2/logs',
-               days             = 28,
-               mtime            = True,
-               sudo             = True,
-               depth            = 0,
-               maxSize          = '10000000000',
-               minimalScan      = True,
-               onEntryPastLimit = safeRemove,
-               **opts).scanEntries()
+    if exists('/Users/johnw/.cache/iTerm2/logs'):
+        DirScanner(directory        = '/Users/johnw/.cache/iTerm2/logs',
+                   days             = 28,
+                   mtime            = True,
+                   sudo             = True,
+                   depth            = 0,
+                   maxSize          = '10000000000',
+                   minimalScan      = True,
+                   onEntryPastLimit = safeRemove,
+                   **opts).scanEntries()
 
     for name in os.listdir("/Volumes"):
         path = join("/Volumes", name, ".backups")
