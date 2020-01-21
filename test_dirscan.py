@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import dirscan
 
 import os

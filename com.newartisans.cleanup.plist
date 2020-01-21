@@ -9,6 +9,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/usr/bin/sudo</string>
+		<string>python</string>
 		<string>/Users/johnw/bin/cleanup</string>
 	</array>
         <key>StartCalendarInterval</key>

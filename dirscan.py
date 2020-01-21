@@ -1,5 +1,3 @@
-#!/usr/bin/env python2.7
-
 # dirscan.py, version 2.0
 
 import os
