@@ -150,6 +150,18 @@ if not args or "backups" in args:
                        onEntryPastLimit = safeRemove,
                        **opts).scanEntries()
 
+if not args or "products" in args:
+    if exists('/Users/johnw/Products'):
+        DirScanner(directory        = '/Users/johnw/Products',
+                   days             = 14,
+                   mtime            = True,
+                   sudo             = True,
+                   depth            = 0,
+                   maxSize          = '1000000000000',
+                   minimalScan      = True,
+                   onEntryPastLimit = safeRemove,
+                   **opts).scanEntries()
+
 flock(lockfile, LOCK_UN)
 os.remove('/tmp/cleanup.lock')
 
