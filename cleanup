@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# cleanup - Automated cleanup script using dirscan
+
 import os
 import re
 import sys
@@ -40,6 +43,7 @@ if len(sys.argv) > 1:
 if not args or "trash" in args:
     DirScanner(directory        = '/Users/johnw/.Trash',
                days             = 28,
+               mtime            = True,
                cacheAttrs       = True,
                maxSize          = '1%',
                sudo             = True,
@@ -51,6 +55,7 @@ if not args or "trash" in args:
     if isdir('/.Trashes/501'):
         DirScanner(directory        = '/.Trashes/501',
                    days             = 28,
+                   mtime            = True,
                    cacheAttrs       = True,
                    maxSize          = '1%',
                    sudo             = True,
@@ -64,6 +69,7 @@ if not args or "trash" in args:
         if exists(path):
             DirScanner(directory        = path,
                        days             = 28,
+                       mtime            = True,
                        cacheAttrs       = True,
                        maxSize          = '2%',
                        sudo             = True,
@@ -72,40 +78,13 @@ if not args or "trash" in args:
                        onEntryPastLimit = safeRemove,
                        **opts).scanEntries()
 
-    if isdir("/Volumes/slim"):
-        for name in os.listdir("/Volumes/slim"):
-            path = join("/Volumes", "slim", name, ".Trashes", "501")
-            if exists(path):
-                DirScanner(directory        = path,
-                           days             = 28,
-                           cacheAttrs       = True,
-                           maxSize          = '2%',
-                           sudo             = True,
-                           depth            = 0,
-                           minimalScan      = True,
-                           onEntryPastLimit = safeRemove,
-                           **opts).scanEntries()
-
     if isdir("/Volumes/tank"):
         for name in os.listdir("/Volumes/tank"):
             path = join("/Volumes", "tank", name, ".Trashes", "501")
             if exists(path):
                 DirScanner(directory        = path,
                            days             = 28,
-                           cacheAttrs       = True,
-                           maxSize          = '2%',
-                           sudo             = True,
-                           depth            = 0,
-                           minimalScan      = True,
-                           onEntryPastLimit = safeRemove,
-                           **opts).scanEntries()
-
-    if isdir("/Volumes/vault"):
-        for name in os.listdir("/Volumes/vault"):
-            path = join("/Volumes", "vault", name, ".Trashes", "501")
-            if exists(path):
-                DirScanner(directory        = path,
-                           days             = 28,
+                           mtime            = True,
                            cacheAttrs       = True,
                            maxSize          = '2%',
                            sudo             = True,
@@ -149,18 +128,6 @@ if not args or "backups" in args:
                        minimalScan      = True,
                        onEntryPastLimit = safeRemove,
                        **opts).scanEntries()
-
-if not args or "products" in args:
-    if exists('/Users/johnw/Products'):
-        DirScanner(directory        = '/Users/johnw/Products',
-                   days             = 14,
-                   mtime            = True,
-                   sudo             = True,
-                   depth            = 0,
-                   maxSize          = '1000000000000',
-                   minimalScan      = True,
-                   onEntryPastLimit = safeRemove,
-                   **opts).scanEntries()
 
 flock(lockfile, LOCK_UN)
 os.remove('/tmp/cleanup.lock')

@@ -1,9 +1,10 @@
 # dirscan.py, version 2.0
+# Python 3.8+ required for modern type hints
 
 import os
 import re
 import sys
-import cPickle
+import pickle
 import random
 import subprocess
 import logging as l
@@ -13,6 +14,7 @@ from datetime import datetime, timedelta
 from getopt import getopt, GetoptError
 from operator import attrgetter
 from fcntl import flock, LOCK_SH, LOCK_EX, LOCK_UN
+from typing import Optional, Dict, Any, Callable, Union, List
 
 from hashlib import sha1
 from stat import ST_ATIME, ST_MTIME, ST_MODE, ST_SIZE, S_ISDIR, S_ISREG
@@ -31,7 +33,8 @@ def delfile(path):
 
 def deltree(path):
     if True:                    # using a dedicated rm is faster
-        run('/bin/rm -fr', path)
+        if not run('/bin/rm -fr', path):
+            raise OSError(f"Failed to remove directory tree: {path}")
     else:
         if not lexists(path): return
         for root, dirs, files in os.walk(path, topdown = False):
@@ -42,37 +45,37 @@ def deltree(path):
         os.rmdir(path)
 
 
-def run(cmd, path, dryrun = False):
-    path = re.sub("([$\"\\\\])", "\\\\\\1", path)
+def run(cmd: str, path: str, dryrun: bool = False) -> bool:
+    path = re.sub(r"([$\"\\])", r"\\\1", path)
 
     if re.search('%s', cmd):
-        cmd = re.sub('%s', '"' + path + '"', cmd)
+        cmd = re.sub('%s', f'"{path}"', cmd)
     else:
-        cmd = "%s \"%s\"" % (cmd, path)
+        cmd = f'{cmd} "{path}"'
 
-    l.debug("Executing: %s" % cmd)
+    l.debug(f"Executing: {cmd}")
 
     if not dryrun:
-        p = subprocess.Popen(cmd, shell = True)
+        p = subprocess.Popen(cmd, shell=True)
         sts = os.waitpid(p.pid, 0)
         return sts[1] == 0
 
     return True
 
-def safeRun(cmd, path, sudo = False, dryrun = False):
+def safeRun(cmd: str, path: str, sudo: bool = False, dryrun: bool = False) -> bool:
     try:
         if not run(cmd, path, dryrun):
-            l.error("Command failed: '%s' with '%s'" % (cmd, path))
+            l.error(f"Command failed: '{cmd}' with '{path}'")
             raise Exception()
         else:
             return True
     except:
         if sudo:
             try:
-                run('sudo ' + cmd, path, dryrun)
+                run(f'sudo {cmd}', path, dryrun)
                 return True
             except:
-                l.error("Command failed: 'sudo %s' with '%s'" % (cmd, path))
+                l.error(f"Command failed: 'sudo {cmd}' with '{path}'")
         return False
 
 def safeRemove(entry):
@@ -160,33 +163,33 @@ class Entry(object):
         return self._lastCheck
 
     @property
-    def size(self):
+    def size(self) -> int:
         # Clear the cached info, since it may have changed
         if not self._scanner.cacheAttrs:
             self._info    = None
             self._dirSize = None
 
         if self.isRegularFile():
-            return long(self.info[ST_SIZE])
+            return int(self.info[ST_SIZE])
         elif self.isDirectory():
             if not self._dirSize:
-                self._dirSize = 0L
+                self._dirSize = 0
                 for root, dirs, files in os.walk(self.path):
                     for f in files:
-                        self._dirSize += long(os.lstat(join(root, f))[ST_SIZE])
+                        self._dirSize += int(os.lstat(join(root, f))[ST_SIZE])
             return self._dirSize
         else:
-            return 0L
+            return 0
 
     @property
-    def checksum(self):
+    def checksum(self) -> Optional[str]:
         # Clear the cached info, since it may have changed
         if not self._scanner.cacheAttrs:
             self._checksum = None
         if self.isRegularFile():
             if not self._checksum:
                 m = sha1()
-                l.debug("Computing SHA1 for: %s" % self.path)
+                l.debug(f"Computing SHA1 for: {self.path}")
                 self._scanner._bytesScanned += self.size
                 with open(self.path, "rb") as fd:
                     data = fd.read(8192)
@@ -271,7 +274,7 @@ class Entry(object):
     def shouldEnterDirectory(self):
         return self.isDirectory()
 
-    def onEntryEvent(self, eventHandler):
+    def onEntryEvent(self, eventHandler) -> bool:
         if isinstance(eventHandler, str):
             if safeRun(eventHandler, self.path, self.sudo, self.dryrun):
                 return True
@@ -279,13 +282,13 @@ class Entry(object):
             try:
                 if eventHandler(self):
                     return True
-            except Exception, inst:
+            except Exception as inst:
                 l.exception(str(inst))
 
         return False
 
-    def onEntryAdded(self):
-        l.info("A %s" % self.path)
+    def onEntryAdded(self) -> bool:
+        l.info(f"A {self.path}")
 
         self._stamp = rightNow
 
@@ -293,8 +296,8 @@ class Entry(object):
             self.onEntryEvent(self._scanner.onEntryAdded)
         return True
 
-    def onEntryChanged(self, contentsChanged = False):
-        l.info("%s %s" % (contentsChanged and "M" or "T", self.path))
+    def onEntryChanged(self, contentsChanged: bool = False) -> bool:
+        l.info(f"{'M' if contentsChanged else 'T'} {self.path}")
 
         self._stamp = rightNow
 
@@ -302,15 +305,15 @@ class Entry(object):
             self.onEntryEvent(self._scanner.onEntryChanged)
         return True
 
-    def onEntryRemoved(self):
-        l.info("R %s" % self.path)
+    def onEntryRemoved(self) -> bool:
+        l.info(f"R {self.path}")
 
         if self._scanner.onEntryRemoved:
             self.onEntryEvent(self._scanner.onEntryRemoved)
         return True
 
-    def onEntryPastLimit(self, age):
-        l.info("O %s (%.1f days old)" % (self.path, age))
+    def onEntryPastLimit(self, age: float) -> None:
+        l.info(f"O {self.path} ({age:.1f} days old)")
 
         if self._scanner.onEntryPastLimit:
             self.onEntryEvent(self._scanner.onEntryPastLimit)
@@ -346,10 +349,10 @@ class Entry(object):
             try:
                 if secure:
                     if not run('/bin/srm -f', self.path, self.dryrun):
-                        l.warning("Could not securely remove '%s'" % self)
+                        l.warning(f"Could not securely remove '{self}'")
                         raise Exception()
                 else:
-                    l.debug("Calling: cleanup.delfile('%s')" % self.path)
+                    l.debug(f"Calling: cleanup.delfile('{self.path}')")
                     if not self.dryrun:
                         delfile(self.path)
             except:
@@ -360,16 +363,16 @@ class Entry(object):
                         else:
                             run('sudo /bin/rm -f', self.path, self.dryrun)
                     except:
-                        l.error("Error deleting file with sudo: %s" % self)
+                        l.error(f"Error deleting file with sudo: {self}")
 
             if self.dryrun or not lexists(self.path):
                 fileRemoved = True
             else:
-                l.error("Could not remove file: %s\n" % self)
+                l.error(f"Could not remove file: {self}\n")
 
         elif lexists(self.path):
             try:
-                l.debug("Calling: cleanup.deltree('%s')" % self.path)
+                l.debug(f"Calling: cleanup.deltree('{self.path}')")
                 if not self.dryrun:
                     deltree(self.path)
             except:
@@ -377,10 +380,11 @@ class Entry(object):
                     try:
                         run('sudo /bin/rm -fr', self.path, self.dryrun)
                     except:
-                        l.error("Error deleting directory with sudo: %s" % self)
+                        l.error(f"Error deleting directory with sudo: {self}")
 
+            # Only report error if path still exists after all attempts
             if not self.dryrun and lexists(self.path):
-                l.error("Could not remove dir: %s\n" % self.path)
+                l.error(f"Could not remove dir: {self.path}\n")
 
         return fileRemoved
 
@@ -401,21 +405,21 @@ class Entry(object):
                 ftarget = join(expanduser("~/.Trash"), target)
 
             try:
-                l.debug("Calling: os.rename('%s', '%s')" % (self.path, ftarget))
+                l.debug(f"Calling: os.rename('{self.path}', '{ftarget}')")
                 if not self.dryrun:
                     os.rename(self.path, ftarget)
             except:
                 if self.sudo:
                     try:
-                        run('sudo /bin/mv %%s "%s"' % ftarget,
+                        run(f'sudo /bin/mv %s "{ftarget}"',
                             self.path, self.dryrun)
                     except:
-                        l.error("Error moving file with sudo: %s" % self)
+                        l.error(f"Error moving file with sudo: {self}")
 
             if self.dryrun or not lexists(self.path):
                 return True
             else:
-                l.error("Could not trash file: %s\n" % self)
+                l.error(f"Could not trash file: {self}\n")
 
         return False
 
@@ -442,15 +446,17 @@ class Entry(object):
         self._info = None
 
 
-def bytestring(amount):
+def bytestring(amount: int) -> str:
     if amount < 1000:
-        return "%d bytes" % amount
+        return f"{amount} bytes"
     elif amount < 1000 * 1000:
-        return "%d KiB" % (amount / 1000)
+        return f"{amount // 1000} KiB"
     elif amount < 1000 * 1000 * 1000:
-        return "%.1f MiB" % (amount / (1000.0 * 1000.0))
+        return f"{amount / (1000.0 * 1000.0):.1f} MiB"
     elif amount < 1000 * 1000 * 1000 * 1000:
-        return "%.2f GiB" % (amount / (1000.0 * 1000.0 * 1000.0))
+        return f"{amount / (1000.0 * 1000.0 * 1000.0):.2f} GiB"
+    else:
+        return f"{amount / (1000.0 * 1000.0 * 1000.0 * 1000.0):.2f} TiB"
 
 class DirScanner(object):
     _dbMtime    = None
@@ -512,7 +518,7 @@ class DirScanner(object):
 
         if not ignoreFiles:
             l.debug("Initializing `ignoreFiles' to []")
-            ignoreFiles = ['^\.files\.dat$', '^\.DS_Store$', '^\.localized$']
+            ignoreFiles = [r'^\.files\.dat$', r'^\.DS_Store$', r'^\.localized$']
 
         if not isinstance(ignoreFiles, list):
             msg = "`ignoreFiles' must be of list type"
@@ -520,7 +526,7 @@ class DirScanner(object):
 
         if not database:
             database = '.files.dat'
-            l.debug("Setting database name to '%s'" % database)
+            l.debug(f"Setting database name to '{database}'")
 
         if not isinstance(database, str):
             msg = "`database' must be of string type"
@@ -528,7 +534,7 @@ class DirScanner(object):
 
         if os.sep not in database:
             database = join(directory, database)
-            l.debug("Expanding `database' to '%s'" % database)
+            l.debug(f"Expanding `database' to '{database}'")
 
         if minimalScan and depth != 0:
             l.warning("Using minimalScan when depth != 0 may cause problems")
@@ -561,12 +567,12 @@ class DirScanner(object):
 
         if maxSize:
             if re.match('^[0-9]+$', maxSize):
-                self.maxSize = long(maxSize)
+                self.maxSize = int(maxSize)
             else:
                 match = re.match('^([0-9]+)%$', maxSize)
                 if match:
                     info = os.statvfs(directory)
-                    self.maxSize = long((info.f_frsize * info.f_blocks) *
+                    self.maxSize = int((info.f_frsize * info.f_blocks) *
                                         (float(match.group(1))) / 100.0)
                 else:
                     l.error("maxSize parameter is incorrect")
@@ -577,20 +583,20 @@ class DirScanner(object):
         self._dbMtime = None
 
         if not isfile(self.database):
-            l.debug("State database '%s' does not exist yet" % self.database)
+            l.debug(f"State database '{self.database}' does not exist yet")
             return
         elif not os.access(self.database, os.R_OK):
-            l.error("No read access to state data in '%s'" % self.database)
+            l.error(f"No read access to state data in '{self.database}'")
             return
 
-        l.debug("Loading state data from '%s'" % self.database)
+        l.debug(f"Loading state data from '{self.database}'")
 
         with open(self.database, 'rb') as fd:
-            l.debug("Acquiring shared lock on '%s'..." % self.database)
+            l.debug(f"Acquiring shared lock on '{self.database}'...")
             flock(fd, LOCK_SH)
             l.debug("Lock acquired")
             try:
-                self._entries = cPickle.load(fd)
+                self._entries = pickle.load(fd)
 
                 # If the state database was created by the older cleanup.py, then
                 # upgrade it.  Otherwise, associated each saved entry object with
@@ -609,16 +615,15 @@ class DirScanner(object):
                 if upgrade:
                     self._entries = upgrade
             finally:
-                l.debug("Releasing shared lock on '%s'..." % self.database)
+                l.debug(f"Releasing shared lock on '{self.database}'...")
                 flock(fd, LOCK_UN)
                 l.debug("Lock released")
 
-        l.info("Loaded state data from '%s' (%d entries)" %
-               (self.database, len(self._entries.keys())))
+        l.info(f"Loaded state data from '{self.database}' ({len(self._entries)} entries)")
 
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
 
-    def saveState(self, tempDirectory = None):
+    def saveState(self, tempDirectory: Optional[str] = None) -> None:
         if not self.database: return
         if not self._dirty: return
         if self.dryrun: return
@@ -626,33 +631,33 @@ class DirScanner(object):
         databaseDir = dirname(self.database)
 
         if not exists(databaseDir):
-            l.info("Creating state database directory '%s'" % databaseDir)
+            l.info(f"Creating state database directory '{databaseDir}'")
             os.makedirs(databaseDir)
 
         if not isdir(databaseDir):
-            l.error("Database directory '%s' does not exist" % databaseDir)
+            l.error(f"Database directory '{databaseDir}' does not exist")
             return
         elif not os.access(databaseDir, os.W_OK):
-            l.error("Could not write to database directory '%s'" % databaseDir)
+            l.error(f"Could not write to database directory '{databaseDir}'")
             return
 
         if tempDirectory:
             database = join(tempDirectory, basename(self.database))
         else:
             database = self.database
-        l.debug("Writing updated state data to '%s'" % database)
+        l.debug(f"Writing updated state data to '{database}'")
 
         with open(database, 'wb') as fd:
-            l.debug("Acquiring exclusive lock on '%s'..." % database)
+            l.debug(f"Acquiring exclusive lock on '{database}'...")
             flock(fd, LOCK_EX)
             l.debug("Lock acquired")
             try:
-                cPickle.dump(self._entries, fd)
+                pickle.dump(self._entries, fd)
             except:
                 delfile(database)
                 raise
             finally:
-                l.debug("Releasing exclusive lock on '%s'..." % database)
+                l.debug(f"Releasing exclusive lock on '{database}'...")
                 flock(fd, LOCK_UN)
                 l.debug("Lock released")
 
@@ -675,13 +680,13 @@ class DirScanner(object):
         # If we haven't seen this entry before, call `onEntryAdded', which
         # ultimately results in triggering an onEntryAdded event.
 
-        if not self._entries.has_key(entry.path):
-            l.debug("Entry '%s' is being seen for the first time" % entry)
+        if entry.path not in self._entries:
+            l.debug(f"Entry '{entry}' is being seen for the first time")
             if entry.onEntryAdded():
                 self._entries[entry.path] = entry
                 self._dirty = True
 
-            assert not self._shadow.has_key(entry.path)
+            assert entry.path not in self._shadow
 
         # Otherwise, if the file changed, or `minimalScan' is False and the
         # timestamp is derived from the file itself (i.e., not just a record of
@@ -694,8 +699,7 @@ class DirScanner(object):
             changed = self.check and entry.contentsHaveChanged()
 
             if changed or entry.timestampHasChanged():
-                l.debug("Entry '%s' %s seems to have changed" %
-                        (entry, 'content' if changed else 'timestamp'))
+                l.debug(f"Entry '{entry}' {'content' if changed else 'timestamp'} seems to have changed")
                 if entry.onEntryChanged(contentsChanged = changed):
                     self._dirty = True
 
@@ -703,7 +707,7 @@ class DirScanner(object):
             # now dealt with it.  Any entries that remain in `shadow' at
             # the end will trigger an onEntryRemoved event.
 
-            assert self._shadow.has_key(entry.path)
+            assert entry.path in self._shadow
             del self._shadow[entry.path]
 
             # If the `days' option is greater than or equal to zero, do an age
@@ -720,7 +724,7 @@ class DirScanner(object):
                 # that subsequent runs of `ages' are correct.
 
                 if self.ages:
-                    print "%8.1f %s" % (age, entry)
+                    print(f"{age:8.1f} {entry}")
                     return
 
                 if age > self._oldest:
@@ -730,7 +734,7 @@ class DirScanner(object):
                 # event `onEntryPastLimit'.
 
                 if age >= self.days:
-                    l.debug("Entry '%s' is beyond the age limit" % entry)
+                    l.debug(f"Entry '{entry}' is beyond the age limit")
                     entry.onEntryPastLimit(age)
 
             # At this point, check whether we were dealing with a directory
@@ -739,15 +743,15 @@ class DirScanner(object):
 
             if self.pruneDirs and isdir(entry.path) and \
                not os.listdir(entry.path):
-                l.info("Pruning directory '%s'" % entry)
+                l.info(f"Pruning directory '{entry}'")
                 entry.remove()
 
         # Has the entry been removed from disk by any of the above actions? If
         # so, report it having been removed right now.
 
         if not entry.exists() and entry.onEntryRemoved():
-            l.debug("Entry '%s' was removed or found missing" % entry)
-            if self._entries.has_key(entry.path):
+            l.debug(f"Entry '{entry}' was removed or found missing")
+            if entry.path in self._entries:
                 assert isinstance(self._entries[entry.path], Entry)
                 assert self._entries[entry.path] is entry
                 del self._entries[entry.path]
@@ -755,19 +759,19 @@ class DirScanner(object):
 
     def walkEntries(self, fun):
         if callable(fun):
-            for entry in self._entries.values():
+            for entry in list(self._entries.values()):
                 assert isinstance(entry, Entry)
                 fun(entry)
 
     def computeSizes(self):
-        size = 0L
+        size = 0
         size_map = {}
 
-        for entry in self._entries.values():
+        for entry in list(self._entries.values()):
             assert isinstance(entry, Entry)
             entry_size = entry.size
             size += entry_size
-            if size_map.has_key(entry_size):
+            if entry_size in size_map:
                 size_map[entry_size].append(entry)
             else:
                 size_map[entry_size] = [entry]
@@ -777,13 +781,13 @@ class DirScanner(object):
     def _scanEntries(self, path, depth = 0):
         "This is the worker task for scanEntries, called for each directory."
 
-        #l.debug("Scanning %s ..." % path)
+        #l.debug(f"Scanning {path} ...")
         try:
             items = os.listdir(path)
             if self.sort:
                 items.sort()
         except:
-            l.warning("Could not read directory '%s'" % path)
+            l.warning(f"Could not read directory '{path}'")
             return
 
         for name in items:
@@ -795,22 +799,22 @@ class DirScanner(object):
                     ignored = True
                     break
             if ignored:
-                #l.debug("Ignoring file '%s'" % entryPath)
-                if self._entries.has_key(entryPath):
-                    l.debug("Entry '%s' removed due to being ignored" % entryPath)
+                #l.debug(f"Ignoring file '{entryPath}'")
+                if entryPath in self._entries:
+                    l.debug(f"Entry '{entryPath}' removed due to being ignored")
                     del self._entries[entryPath]
-                    for key in self._entries.keys():
+                    for key in list(self._entries.keys()):
                         if key.startswith(entryPath + '/'):
-                            l.debug("Entry '%s' removed due to being ignored" % key)
+                            l.debug(f"Entry '{key}' removed due to being ignored")
                             del self._entries[key]
                     self._dirty = True
                 continue
 
-            if self._entries.has_key(entryPath):
+            if entryPath in self._entries:
                 entry = self._entries[entryPath]
             else:
                 entry = self.createEntry(entryPath)
-                l.debug("Created entry '%s'" % entry)
+                l.debug(f"Created entry '{entry}'")
 
             # Recurse here so that we work from the bottom of the tree up,
             # which allows us to prune directories as they empty out (if
@@ -832,7 +836,7 @@ class DirScanner(object):
         if self.tempDirectory:
             database = join(self.tempDirectory, basename(self.database))
             if isfile(database):
-                run('sudo /bin/cp -p %%s "%s"' % self.database,
+                run(f'sudo /bin/cp -p %s "{self.database}"',
                     database, self.dryrun)
                 delfile(database)
 
@@ -956,9 +960,10 @@ class DirScanner(object):
             if self._dbMtime >= dirMtime:
                 scandir = False
 
-            l.info("Database mtime %s %s directory %s, %s scan" %
-                   (self._dbMtime, scandir and "<" or ">=", dirMtime,
-                    scandir and "will" or "will not"))
+            if scandir:
+                l.info(f"Database mtime {self._dbMtime} < directory {dirMtime}, will scan filesystem")
+            else:
+                l.info(f"Database mtime {self._dbMtime} >= directory {dirMtime}, skipping filesystem scan (will still check ages of existing entries)")
 
         # If the directory has not changed, we can simply scan the entries in
         # the database without having to refer to disk. Otherwise, either the
@@ -968,7 +973,7 @@ class DirScanner(object):
         self._shadow = self._entries.copy()
 
         if not scandir:
-            for entry in self._entries.values():
+            for entry in list(self._entries.values()):
                 assert isinstance(entry, Entry)
                 self._scanEntry(entry)
         else:
@@ -984,18 +989,17 @@ class DirScanner(object):
 
         for entry in self._shadow.values():
             if entry.onEntryRemoved():
-                if self._entries.has_key(entry.path):
-                    l.debug("Removing missing entry at '%s'" % entry)
+                if entry.path in self._entries:
+                    l.debug(f"Removing missing entry at '{entry}'")
                     del self._entries[entry.path]
                 else:
-                    l.warning("Missing entry '%s' not in entries list" % entry)
+                    l.warning(f"Missing entry '{entry}' not in entries list")
                 self._dirty = True
 
         # Report what the oldest file seen was, if debugging
 
         if self._oldest < self.days:
-            l.info("No files were beyond the age limit (oldest %.1fd < %.1fd)" %
-                   (self._oldest, self.days))
+            l.info(f"No files were beyond the age limit (oldest {self._oldest:.1f}d < {self.days:.1f}d)")
 
         # Compute the sizes of all files in the directory (if it has changed
         # at all), to see if we're over the overall limit.  If so, first
@@ -1005,15 +1009,14 @@ class DirScanner(object):
         if self.maxSize and self._dirty:
             total_size, size_map = self.computeSizes()
             if total_size > self.maxSize:
-                l.info("Directory exceeds the maximum size (%s > %s)" %
-                       (bytestring(total_size), bytestring(self.maxSize)))
+                l.info(f"Directory exceeds the maximum size ({bytestring(total_size)} > {bytestring(self.maxSize)})")
 
-                sizes = size_map.keys()
+                sizes = list(size_map.keys())
                 sizes.sort()
                 sizes.reverse()
 
-                if size_map.has_key(0):
-                    l.info("Pruning %d empty entries" % len(size_map[0]))
+                if 0 in size_map:
+                    l.info(f"Pruning {len(size_map[0])} empty entries")
                     for entry in size_map[0]:
                         safeRemove(entry)
                         self._dirty = True
@@ -1022,8 +1025,7 @@ class DirScanner(object):
                     entries = size_map[size]
                     entries.sort(key = attrgetter('timestamp'))
                     for entry in entries:
-                        l.info("Purging entry %s to reduce size (saves %s)" %
-                               (entry.path, bytestring(size)))
+                        l.info(f"Purging entry {entry.path} to reduce size (saves {bytestring(size)})")
 
                         safeRemove(entry)
                         total_size -= size
@@ -1033,12 +1035,10 @@ class DirScanner(object):
                             break
 
                     if total_size <= self.maxSize:
-                        l.info("Directory is now within size limits (%s <= %s)" %
-                               (bytestring(total_size), bytestring(self.maxSize)))
+                        l.info(f"Directory is now within size limits ({bytestring(total_size)} <= {bytestring(self.maxSize)})")
                         break
             else:
-                l.info("Directory is within size limits (%s <= %s)" %
-                       (bytestring(total_size), bytestring(self.maxSize)))
+                l.info(f"Directory is within size limits ({bytestring(total_size)} <= {bytestring(self.maxSize)})")
 
         # If any changes have been made to the state database, write those
         # changes out before exiting.
@@ -1058,7 +1058,7 @@ class DirScanner(object):
 
 
 def showVersion():
-    print """
+    print("""
 dirscan.py, version 1.0
 
 Copyright (c) 2007-2008, by John Wiegley <johnw@newartisans.com>
@@ -1072,11 +1072,11 @@ ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
 LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
 ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."""
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.""")
 
 
 def usage():
-    print """Usage: dirscan.py [options]
+    print("""Usage: dirscan.py [options]
 
 Where 'options' is one or more of:
     -h, --help            This help screen
@@ -1151,7 +1151,7 @@ Broken down piece by piece:
     -K ...  # If any file is tagged with a Finder comment containing
             # @pending, it will not be moved from the Downloads
             # directory.  I use this for items I have yet to look at,
-            # but for which I haven't time."""
+            # but for which I haven't time.""")
 
 
 def processOptions(argv):
@@ -1271,8 +1271,7 @@ if __name__ == '__main__':
     userOptions = processOptions(sys.argv[1:])
 
     if not isdir(userOptions['directory']):
-        sys.stderr.write("The directory '%s' does not exist" %
-                         userOptions['directory'])
+        sys.stderr.write(f"The directory '{userOptions['directory']}' does not exist")
         sys.exit(1)
 
     scanner = DirScanner(**userOptions)

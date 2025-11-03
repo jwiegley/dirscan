@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# verify.py - File integrity verification using dirscan
+
 import os
 import re
 import sys
@@ -5,8 +8,6 @@ import getopt
 import subprocess
 import random
 import logging as l
-
-sys.path.append('/Users/johnw/src/dirscan')
 
 from dirscan  import *
 from datetime import *
@@ -40,33 +41,33 @@ if len(sys.argv) > 1:
 def verifyContents(entry):
     checksumSet = False
     if not opts['dryrun']:
-        p = subprocess.Popen("xattr -p checksum-sha1 '%s'" % entry.path,
+        p = subprocess.Popen(f"xattr -p checksum-sha1 '{entry.path}'",
                              shell = True, stdout = subprocess.PIPE,
                              stderr = subprocess.PIPE)
         sts = os.waitpid(p.pid, 0)
         if sts[1] == 0:
             sha = p.stdout.read()[:-1]
-            print "ADDED: %s (SHA1 %s)" % (entry.path, sha)
+            print(f"ADDED: {entry.path} (SHA1 {sha})")
             entry._checksum = sha # we know what it should be from disk
             checksumSet = True
 
     if not checksumSet:
-        print "ADDED:", entry.path
+        print(f"ADDED: {entry.path}")
 
     entry._lastCheck = rightNow - timedelta(random.randint(0, window))
 
     return True
 
 def alertAdminChanged(entry):
-    print "CHANGED:", entry.path
+    print(f"CHANGED: {entry.path}")
     with open(expanduser('~/Desktop/verify.log'), "a") as fd:
-        fd.write("%s - CHANGED: %s\n" % (rightNow, entry.path))
+        fd.write(f"{rightNow} - CHANGED: {entry.path}\n")
     return True
 
 def alertAdminRemoved(entry):
-    print "REMOVED:", entry.path
+    print(f"REMOVED: {entry.path}")
     with open(expanduser('~/Desktop/verify.log'), "a") as fd:
-        fd.write("%s - REMOVED: %s\n" % (rightNow, entry.path))
+        fd.write(f"{rightNow} - REMOVED: {entry.path}\n")
     return True
 
 if args:
@@ -75,15 +76,15 @@ if args:
             DirScanner(directory         = expanduser(path),
                        check             = True,
                        checkWindow       = window,
-                       ignoreFiles       = [ '^\.files\.dat$'
-                                           , '^\.DS_Store$'
-                                           , '^\.localized$'
-                                           , '\.dtMeta$'
-                                           , '\.sparsebundle$'
-                                           , '^[0-9]{18}$'
-                                           , '^Saves$'
-                                           , '^Cache$'
-                                           , '\.dxo$'
+                       ignoreFiles       = [ r'^\.files\.dat$'
+                                           , r'^\.DS_Store$'
+                                           , r'^\.localized$'
+                                           , r'\.dtMeta$'
+                                           , r'\.sparsebundle$'
+                                           , r'^[0-9]{18}$'
+                                           , r'^Saves$'
+                                           , r'^Cache$'
+                                           , r'\.dxo$'
                                            ],
                        useChecksumAlways = True,
                        onEntryAdded      = verifyContents,
