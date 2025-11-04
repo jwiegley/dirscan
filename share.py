@@ -255,7 +255,7 @@ def main():
 
     if len(sys.argv) > 1:
         try:
-            options, args = getopt.getopt(sys.argv[1:], 'nvh', ['help'])
+            opts, args = getopt.getopt(sys.argv[1:], 'nvh', ['help'])
         except getopt.GetoptError as e:
             print(f"Error: {e}")
             print_usage()
@@ -297,6 +297,9 @@ def main():
         print("DRY-RUN MODE: No actual changes will be made")
 
     # Create scanner with checksum verification
+    # Remove 'verbose' from opts as it's not a valid DirScanner parameter
+    scanner_opts = {k: v for k, v in opts.items() if k != 'verbose'}
+
     scanner = DirScanner(
         directory=SOURCE_DIR,
         check=True,                    # Check for changes
@@ -312,7 +315,7 @@ def main():
         onEntryAdded=on_file_added,
         onEntryChanged=on_file_changed,
         onEntryRemoved=on_file_removed,
-        **opts
+        **scanner_opts
     )
 
     # Perform the scan
