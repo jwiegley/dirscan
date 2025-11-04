@@ -255,7 +255,7 @@ def main():
 
     if len(sys.argv) > 1:
         try:
-            opts, args = getopt.getopt(sys.argv[1:], 'nvh', ['help'])
+            options, args = getopt.getopt(sys.argv[1:], 'nvh', ['help'])
         except getopt.GetoptError as e:
             print(f"Error: {e}")
             print_usage()
