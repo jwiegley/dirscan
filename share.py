@@ -20,9 +20,9 @@ from typing import Optional
 random.seed()
 
 # Configuration
-SOURCE_DIR = "/tank/Nextcloud/johnw/files/share"
+SOURCE_DIR = "/home/johnw/share"
 DEST_DIR = "/tank/Public/share"
-SOURCE_OWNER = "nextcloud:nextcloud"
+SOURCE_OWNER = "johnw:johnw"
 DEST_OWNER = "johnw:johnw"
 CHECK_WINDOW = 7  # Re-verify checksums every 7 days
 
@@ -272,6 +272,12 @@ def main():
             elif o in ('-h', '--help'):
                 print_usage()
                 sys.exit(0)
+
+    if args and len(args) >= 4:
+        SOURCE_DIR = args[0]
+        DEST_DIR = args[1]
+        SOURCE_OWNER = args[2]
+        DEST_OWNER = args[3]
 
     # If no explicit logging configured, use INFO level
     if not debug:
