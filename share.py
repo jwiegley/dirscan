@@ -5,17 +5,16 @@
 # /tank/Public/share, handling ownership changes from nextcloud:nextcloud to johnw:johnw.
 # Uses checksum verification to detect content changes reliably.
 
-import os
-import sys
 import getopt
-import subprocess
-import random
 import logging as l
+import os
+import random
+import subprocess
+import sys
+from datetime import timedelta
+from os.path import dirname, exists, isdir, join
 
 from dirscan import DirScanner, rightNow
-from datetime import timedelta
-from os.path import expanduser, join, dirname, exists, isdir, isfile
-from typing import Optional
 
 random.seed()
 
@@ -28,10 +27,7 @@ CHECK_WINDOW = 7  # Re-verify checksums every 7 days
 
 # Global options
 debug = False
-opts = {
-    'dryrun': False,
-    'verbose': False
-}
+opts = {"dryrun": False, "verbose": False}
 
 
 def ensure_dest_directory(dest_path: str) -> bool:
@@ -52,10 +48,10 @@ def ensure_dest_directory(dest_path: str) -> bool:
             return False
 
     try:
-        if not opts['dryrun']:
+        if not opts["dryrun"]:
             os.makedirs(dest_path, exist_ok=True)
             # Set ownership to johnw:johnw
-            subprocess.run(['chown', DEST_OWNER, dest_path], check=True)
+            subprocess.run(["chown", DEST_OWNER, dest_path], check=True)
             l.debug(f"Created directory: {dest_path}")
         else:
             l.debug(f"Would create directory: {dest_path}")
@@ -95,21 +91,15 @@ def copy_file_with_ownership(source_path: str, dest_path: str) -> bool:
         if not ensure_dest_directory(dest_dir):
             return False
 
-        if not opts['dryrun']:
+        if not opts["dryrun"]:
             # Copy the file
             result = subprocess.run(
-                ['cp', '-p', source_path, dest_path],
-                check=True,
-                capture_output=True,
-                text=True
+                ["cp", "-p", source_path, dest_path], check=True, capture_output=True, text=True
             )
 
             # Change ownership to johnw:johnw
             subprocess.run(
-                ['chown', DEST_OWNER, dest_path],
-                check=True,
-                capture_output=True,
-                text=True
+                ["chown", DEST_OWNER, dest_path], check=True, capture_output=True, text=True
             )
 
             l.debug(f"Copied {source_path} -> {dest_path}")
@@ -142,12 +132,9 @@ def remove_file(dest_path: str) -> bool:
             l.debug(f"Destination already removed: {dest_path}")
             return True
 
-        if not opts['dryrun']:
+        if not opts["dryrun"]:
             result = subprocess.run(
-                ['rm', '-f', dest_path],
-                check=True,
-                capture_output=True,
-                text=True
+                ["rm", "-f", dest_path], check=True, capture_output=True, text=True
             )
             l.debug(f"Removed {dest_path}")
         else:
@@ -255,21 +242,20 @@ def main():
 
     if len(sys.argv) > 1:
         try:
-            options, args = getopt.getopt(sys.argv[1:], 'nvh', ['help'])
+            options, args = getopt.getopt(sys.argv[1:], "nvh", ["help"])
         except getopt.GetoptError as e:
             print(f"Error: {e}")
             print_usage()
             sys.exit(2)
 
         for o, a in options:
-            if o in ('-v'):
+            if o in ("-v"):
                 debug = True
-                opts['verbose'] = True
-                l.basicConfig(level=l.DEBUG,
-                             format='[%(levelname)s] %(message)s')
-            elif o in ('-n'):
-                opts['dryrun'] = True
-            elif o in ('-h', '--help'):
+                opts["verbose"] = True
+                l.basicConfig(level=l.DEBUG, format="[%(levelname)s] %(message)s")
+            elif o in ("-n"):
+                opts["dryrun"] = True
+            elif o in ("-h", "--help"):
                 print_usage()
                 sys.exit(0)
 
@@ -281,7 +267,7 @@ def main():
 
     # If no explicit logging configured, use INFO level
     if not debug:
-        l.basicConfig(level=l.INFO, format='%(message)s')
+        l.basicConfig(level=l.INFO, format="%(message)s")
 
     # Verify source directory exists
     if not isdir(SOURCE_DIR):
@@ -299,40 +285,41 @@ def main():
     print(f"Mirroring to: {DEST_DIR}")
     print(f"Ownership: {SOURCE_OWNER} -> {DEST_OWNER}")
 
-    if opts['dryrun']:
+    if opts["dryrun"]:
         print("DRY-RUN MODE: No actual changes will be made")
 
     # Create scanner with checksum verification
     # Remove 'verbose' from opts as it's not a valid DirScanner parameter
-    scanner_opts = {k: v for k, v in opts.items() if k != 'verbose'}
+    scanner_opts = {k: v for k, v in opts.items() if k != "verbose"}
 
     scanner = DirScanner(
         directory=SOURCE_DIR,
-        check=True,                    # Check for changes
-        useChecksumAlways=True,        # Always verify with checksums
-        checkWindow=CHECK_WINDOW,       # Re-verify every N days
+        check=True,  # Check for changes
+        useChecksumAlways=True,  # Always verify with checksums
+        checkWindow=CHECK_WINDOW,  # Re-verify every N days
         ignoreFiles=[
-            r'^\.files\.dat$',         # Scanner database
-            r'^\.DS_Store$',           # macOS metadata
-            r'^\.localized$',          # macOS localization
-            r'^Thumbs\.db$',           # Windows thumbnail cache
-            r'^\.~lock\.',             # LibreOffice lock files
+            r"^\.files\.dat$",  # Scanner database
+            r"^\.DS_Store$",  # macOS metadata
+            r"^\.localized$",  # macOS localization
+            r"^Thumbs\.db$",  # Windows thumbnail cache
+            r"^\.~lock\.",  # LibreOffice lock files
         ],
         onEntryAdded=on_file_added,
         onEntryChanged=on_file_changed,
         onEntryRemoved=on_file_removed,
-        **scanner_opts
+        **scanner_opts,
     )
 
     # Perform the scan
     scanner.scanEntries()
 
-    print(f"\nScan complete.")
+    print("\nScan complete.")
 
 
 def print_usage():
     """Print usage information."""
-    print("""
+    print(
+        """
 Usage: share.py [OPTIONS]
 
 Mirror files from Nextcloud share to public share with ownership changes.
@@ -350,15 +337,16 @@ Configuration:
 The script uses checksum verification to reliably detect content changes
 and will re-verify files every {CHECK_WINDOW} days to ensure integrity.
 """.format(
-        SOURCE_DIR=SOURCE_DIR,
-        DEST_DIR=DEST_DIR,
-        SOURCE_OWNER=SOURCE_OWNER,
-        DEST_OWNER=DEST_OWNER,
-        CHECK_WINDOW=CHECK_WINDOW
-    ))
+            SOURCE_DIR=SOURCE_DIR,
+            DEST_DIR=DEST_DIR,
+            SOURCE_OWNER=SOURCE_OWNER,
+            DEST_OWNER=DEST_OWNER,
+            CHECK_WINDOW=CHECK_WINDOW,
+        )
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
 # share.py ends here

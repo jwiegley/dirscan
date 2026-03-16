@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 # test_dirscan.py - Unit tests for dirscan module
 
-import dirscan
-
-import os
+import logging as l
+import tempfile
 import time
 import unittest
-import logging as l
+from os.path import isdir, isfile, join
 
-from os.path import isfile, isdir, join
+import dirscan
 
-msgBuffer    = ""
+msgBuffer = ""
 respondTruly = True
 
 
@@ -24,10 +23,10 @@ class Entry(dirscan.Entry):
             msgBuffer += "A %s\n" % self.path
         return respondTruly
 
-    def onEntryChanged(self, contentsChanged = False):
+    def onEntryChanged(self, contentsChanged=False):
         global msgBuffer
         if respondTruly:
-            msgBuffer += "%s %s\n" % ('M' if contentsChanged else 'm', self.path)
+            msgBuffer += "%s %s\n" % ("M" if contentsChanged else "m", self.path)
         return respondTruly
 
     def onEntryRemoved(self):
@@ -47,55 +46,48 @@ class DirScannerTestCase(unittest.TestCase):
         global msgBuffer
         msgBuffer = ""
 
-        self.testdir = '/tmp/DirScannerTest'
-
-        if isdir(self.testdir):
-            dirscan.deltree(self.testdir)
-
-        os.makedirs(self.testdir)
+        self.testdir = tempfile.mkdtemp(prefix="DirScannerTest_")
         assert isdir(self.testdir)
 
         if False:
-            l.basicConfig(level = l.DEBUG,
-                          format = '[%(levelname)s] %(message)s')
-        self.scanner = dirscan.DirScanner(self.testdir, sort = True,
-                                          check = True)
+            l.basicConfig(level=l.DEBUG, format="[%(levelname)s] %(message)s")
+        self.scanner = dirscan.DirScanner(self.testdir, sort=True, check=True)
         self.scanner.registerEntryClass(Entry)
 
     def tearDown(self):
         if isdir(self.testdir):
-            dirscan.deltree(self.testdir)
+            import shutil
+
+            shutil.rmtree(self.testdir, ignore_errors=True)
         del self.scanner
 
-
-    def scanEntries(self, response = True):
+    def scanEntries(self, response=True):
         global msgBuffer, respondTruly
 
-        msgBuffer    = ""
+        msgBuffer = ""
         respondTruly = response
 
         self.scanner.scanEntries()
 
-
     def testFileAdded(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries()
         self.assertTrue(isfile(self.scanner.database))
         self.assertEqual(msgBuffer, f"A {self.testdir}/hello\n")
 
-        fd = open(join(self.testdir, 'goodbye'), 'w')
-        fd.write('Goodbye, world!\n')
+        fd = open(join(self.testdir, "goodbye"), "w")
+        fd.write("Goodbye, world!\n")
         fd.close()
 
         self.scanEntries()
         self.assertEqual(msgBuffer, f"A {self.testdir}/goodbye\n")
 
     def testFileChanged(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries()
@@ -103,32 +95,30 @@ class DirScannerTestCase(unittest.TestCase):
         self.assertEqual(msgBuffer, f"A {self.testdir}/hello\n")
 
         time.sleep(1)
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Goodbye, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Goodbye, world!\n")
         fd.close()
 
         self.scanEntries()
         self.assertEqual(msgBuffer, f"M {self.testdir}/hello\n")
 
-
     def testFileRemoved(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries()
         self.assertTrue(isfile(self.scanner.database))
         self.assertEqual(msgBuffer, f"A {self.testdir}/hello\n")
 
-        dirscan.delfile(join(self.testdir, 'hello'))
+        dirscan.delfile(join(self.testdir, "hello"))
 
         self.scanEntries()
         self.assertEqual(msgBuffer, f"R {self.testdir}/hello\n")
 
-
     def testFilePastLimit(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries()
@@ -144,10 +134,9 @@ class DirScannerTestCase(unittest.TestCase):
 
         self.assertEqual(msgBuffer, f"O {self.testdir}/hello\n")
 
-
     def testFileAddedFail(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries(False)
@@ -158,8 +147,8 @@ class DirScannerTestCase(unittest.TestCase):
         self.assertTrue(isfile(self.scanner.database))
         self.assertEqual(msgBuffer, f"A {self.testdir}/hello\n")
 
-        fd = open(join(self.testdir, 'goodbye'), 'w')
-        fd.write('Goodbye, world!\n')
+        fd = open(join(self.testdir, "goodbye"), "w")
+        fd.write("Goodbye, world!\n")
         fd.close()
 
         self.scanEntries(False)
@@ -169,10 +158,9 @@ class DirScannerTestCase(unittest.TestCase):
         self.scanEntries()
         self.assertEqual(msgBuffer, f"A {self.testdir}/goodbye\n")
 
-
     def testFileChangedFail(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries()
@@ -180,8 +168,8 @@ class DirScannerTestCase(unittest.TestCase):
         self.assertEqual(msgBuffer, f"A {self.testdir}/hello\n")
 
         time.sleep(1)
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Goodbye, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Goodbye, world!\n")
         fd.close()
 
         self.scanEntries(False)
@@ -190,17 +178,16 @@ class DirScannerTestCase(unittest.TestCase):
         self.scanEntries()
         self.assertEqual(msgBuffer, f"M {self.testdir}/hello\n")
 
-
     def testFileRemovedFail(self):
-        fd = open(join(self.testdir, 'hello'), 'w')
-        fd.write('Hello, world!\n')
+        fd = open(join(self.testdir, "hello"), "w")
+        fd.write("Hello, world!\n")
         fd.close()
 
         self.scanEntries()
         self.assertTrue(isfile(self.scanner.database))
         self.assertEqual(msgBuffer, f"A {self.testdir}/hello\n")
 
-        dirscan.delfile(join(self.testdir, 'hello'))
+        dirscan.delfile(join(self.testdir, "hello"))
 
         self.scanEntries(False)
         self.assertEqual(msgBuffer, "")
@@ -211,5 +198,6 @@ class DirScannerTestCase(unittest.TestCase):
 def suite():
     return unittest.TestLoader().loadTestsFromTestCase(DirScannerTestCase)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

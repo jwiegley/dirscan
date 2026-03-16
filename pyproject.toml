@@ -1,0 +1,57 @@
+[project]
+name = "dirscan"
+version = "2.0.0"
+description = "Stateful directory scanning in Python"
+requires-python = ">=3.8"
+license = "BSD-3-Clause"
+
+[tool.ruff]
+target-version = "py38"
+line-length = 100
+extend-include = ["cleanup"]
+extend-exclude = ["test/test.py"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "S",   # flake8-bandit (security)
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "S602",  # subprocess popen with shell=True (intentional in run())
+    "S603",  # subprocess call with shell=True
+    "S604",  # function call with shell=True
+    "S605",  # starting process with shell
+    "S301",  # pickle usage (intentional - state persistence)
+    "S324",  # sha1 (file checksums, not security)
+    "S108",  # hardcoded temp directory
+    "E722",  # bare except (legacy code pattern)
+    "UP031", # printf-style string formatting (legacy code)
+    "UP032", # f-string vs format() (legacy code)
+    "SIM105", # contextlib.suppress (legacy code)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"dirscan.py" = ["S101", "S110", "S311", "SIM108"]
+"test_*.py" = ["S101", "SIM115"]
+"cleanup" = ["F401", "F403", "F405", "B007", "SIM115", "S311"]
+"verify.py" = ["F403", "F405", "S311", "SIM115", "S607", "S603", "B007"]
+"share.py" = ["S311", "B007", "S607", "S603", "SIM102", "F841"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["test_*.py", "scripts/*", "test/*", "cleanup", "verify.py", "share.py"]
+
+[tool.coverage.report]
+fail_under = 30
+show_missing = true

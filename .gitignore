@@ -1,1 +1,13 @@
 *.pyc
+__pycache__/
+.files.dat
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+.benchmarks/
+.ruff_cache/
+result

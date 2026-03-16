@@ -1,0 +1,21 @@
+pre-commit:
+  parallel: true
+  commands:
+    ruff-format:
+      glob: "*.py"
+      run: ruff format --force-exclude --check {staged_files}
+    ruff-lint:
+      glob: "*.py"
+      run: ruff check --force-exclude {staged_files}
+    tests:
+      glob: "*.py"
+      run: python -m pytest test_dirscan.py -x -q --cov=dirscan --cov-fail-under=30
+    fuzz:
+      glob: "*.py"
+      run: python -m pytest test_fuzz.py -x -q
+    perf:
+      glob: "*.py"
+      run: python scripts/check_perf.py
+    nix-check:
+      glob: "*.{py,nix,toml,yaml,yml}"
+      run: nix flake check --no-warn-dirty 2>&1

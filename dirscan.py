@@ -1,43 +1,44 @@
 # dirscan.py, version 2.0
 # Python 3.8+ required for modern type hints
 
+import logging as l
 import os
-import re
-import sys
 import pickle
 import random
+import re
 import subprocess
-import logging as l
-
+import sys
 from copy import deepcopy
 from datetime import datetime, timedelta
-from getopt import getopt, GetoptError
-from operator import attrgetter
-from fcntl import flock, LOCK_SH, LOCK_EX, LOCK_UN
-from typing import Optional, Dict, Any, Callable, Union, List
-
+from fcntl import LOCK_EX, LOCK_SH, LOCK_UN, flock
+from getopt import GetoptError, getopt
 from hashlib import sha1
-from stat import ST_ATIME, ST_MTIME, ST_MODE, ST_SIZE, S_ISDIR, S_ISREG
-from os.path import (join, expanduser, dirname, basename,
-                     exists, lexists, isfile, isdir, islink)
+from operator import attrgetter
+from os.path import basename, dirname, exists, expanduser, isdir, isfile, islink, join, lexists
+from stat import S_ISDIR, S_ISREG, ST_ATIME, ST_MODE, ST_MTIME, ST_SIZE
+from typing import Optional
 
 random.seed()
 rightNow = datetime.now()
 
-class InvalidArgumentException(Exception): pass
+
+class InvalidArgumentException(Exception):
+    pass
 
 
 def delfile(path):
     if lexists(path):
         os.remove(path)
 
+
 def deltree(path):
-    if True:                    # using a dedicated rm is faster
-        if not run('/bin/rm -fr', path):
+    if True:  # using a dedicated rm is faster
+        if not run("/bin/rm -fr", path):
             raise OSError(f"Failed to remove directory tree: {path}")
     else:
-        if not lexists(path): return
-        for root, dirs, files in os.walk(path, topdown = False):
+        if not lexists(path):
+            return
+        for root, dirs, files in os.walk(path, topdown=False):
             for f in files:
                 os.remove(join(root, f))
             for d in dirs:
@@ -48,8 +49,8 @@ def deltree(path):
 def run(cmd: str, path: str, dryrun: bool = False) -> bool:
     path = re.sub(r"([$\"\\])", r"\\\1", path)
 
-    if re.search('%s', cmd):
-        cmd = re.sub('%s', f'"{path}"', cmd)
+    if re.search("%s", cmd):
+        cmd = re.sub("%s", f'"{path}"', cmd)
     else:
         cmd = f'{cmd} "{path}"'
 
@@ -62,6 +63,7 @@ def run(cmd: str, path: str, dryrun: bool = False) -> bool:
 
     return True
 
+
 def safeRun(cmd: str, path: str, sudo: bool = False, dryrun: bool = False) -> bool:
     try:
         if not run(cmd, path, dryrun):
@@ -72,32 +74,34 @@ def safeRun(cmd: str, path: str, sudo: bool = False, dryrun: bool = False) -> bo
     except:
         if sudo:
             try:
-                run(f'sudo {cmd}', path, dryrun)
+                run(f"sudo {cmd}", path, dryrun)
                 return True
             except:
                 l.error(f"Command failed: 'sudo {cmd}' with '{path}'")
         return False
 
+
 def safeRemove(entry):
     entry.remove()
+
 
 def safeTrash(entry):
     entry.trash()
 
 
-class Entry(object):
-    _scanner   = None
+class Entry:
+    _scanner = None
     _prevStamp = None
-    _stamp     = None
-    _prevInfo  = None
-    _checksum  = None
+    _stamp = None
+    _prevInfo = None
+    _checksum = None
     _lastCheck = None
-    _info      = None
-    _dirSize   = None
+    _info = None
+    _dirSize = None
 
     def __init__(self, theScanner, path):
         self._scanner = theScanner
-        self._path    = path
+        self._path = path
 
     @property
     def scanner(self):
@@ -166,7 +170,7 @@ class Entry(object):
     def size(self) -> int:
         # Clear the cached info, since it may have changed
         if not self._scanner.cacheAttrs:
-            self._info    = None
+            self._info = None
             self._dirSize = None
 
         if self.isRegularFile():
@@ -174,7 +178,7 @@ class Entry(object):
         elif self.isDirectory():
             if not self._dirSize:
                 self._dirSize = 0
-                for root, dirs, files in os.walk(self.path):
+                for root, _dirs, files in os.walk(self.path):
                     for f in files:
                         self._dirSize += int(os.lstat(join(root, f))[ST_SIZE])
             return self._dirSize
@@ -196,7 +200,7 @@ class Entry(object):
                     while data:
                         m.update(data)
                         data = fd.read(8192)
-                self._checksum  = m.hexdigest()
+                self._checksum = m.hexdigest()
                 if self._scanner.checkWindow:
                     days = random.randint(0, self._scanner.checkWindow - 1)
                     self._lastCheck = rightNow - timedelta(days)
@@ -255,7 +259,8 @@ class Entry(object):
     def setTimestamp(self, stamp):
         if not isinstance(stamp, datetime):
             msg = "`setTimestamp' requires an argument of type `datetime'"
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
         self._stamp = stamp
 
     timestamp = property(getTimestamp, setTimestamp)
@@ -348,7 +353,7 @@ class Entry(object):
             secure = self.secure
             try:
                 if secure:
-                    if not run('/bin/srm -f', self.path, self.dryrun):
+                    if not run("/bin/srm -f", self.path, self.dryrun):
                         l.warning(f"Could not securely remove '{self}'")
                         raise Exception()
                 else:
@@ -359,9 +364,9 @@ class Entry(object):
                 if self.sudo:
                     try:
                         if secure:
-                            run('sudo /bin/srm -f', self.path, self.dryrun)
+                            run("sudo /bin/srm -f", self.path, self.dryrun)
                         else:
-                            run('sudo /bin/rm -f', self.path, self.dryrun)
+                            run("sudo /bin/rm -f", self.path, self.dryrun)
                     except:
                         l.error(f"Error deleting file with sudo: {self}")
 
@@ -378,7 +383,7 @@ class Entry(object):
             except:
                 if self.sudo:
                     try:
-                        run('sudo /bin/rm -fr', self.path, self.dryrun)
+                        run("sudo /bin/rm -fr", self.path, self.dryrun)
                     except:
                         l.error(f"Error deleting directory with sudo: {self}")
 
@@ -394,10 +399,10 @@ class Entry(object):
             return True
 
         elif exists(self.path):
-            base    = basename(self.path)
-            target  = base
+            base = basename(self.path)
+            target = base
             ftarget = join(expanduser("~/.Trash"), target)
-            index   = 1
+            index = 1
 
             while lexists(ftarget):
                 target = "%s-%d" % (base, index)
@@ -411,8 +416,7 @@ class Entry(object):
             except:
                 if self.sudo:
                     try:
-                        run(f'sudo /bin/mv %s "{ftarget}"',
-                            self.path, self.dryrun)
+                        run(f'sudo /bin/mv %s "{ftarget}"', self.path, self.dryrun)
                     except:
                         l.error(f"Error moving file with sudo: {self}")
 
@@ -436,13 +440,13 @@ class Entry(object):
                 self._prevInfo = deepcopy(x)
                 self._info = None
 
-        odict = self.__dict__.copy() # copy the dict since we change it
-        del odict['_scanner']
+        odict = self.__dict__.copy()  # copy the dict since we change it
+        del odict["_scanner"]
 
         return odict
 
     def __setstate__(self, info):
-        self.__dict__.update(info) # update attributes
+        self.__dict__.update(info)  # update attributes
         self._info = None
 
 
@@ -458,50 +462,54 @@ def bytestring(amount: int) -> str:
     else:
         return f"{amount / (1000.0 * 1000.0 * 1000.0 * 1000.0):.2f} TiB"
 
-class DirScanner(object):
-    _dbMtime    = None
-    _entries    = None
-    _shadow     = None
-    _dirty      = False
-    _oldest     = 0
+
+class DirScanner:
+    _dbMtime = None
+    _entries = None
+    _shadow = None
+    _dirty = False
+    _oldest = 0
     _entryClass = Entry
 
     @property
     def entries(self):
         return self._entries
 
-    def __init__(self,
-                 directory         = None,
-                 ages              = False, # this is a very odd option
-                 atime             = False,
-                 cacheAttrs        = False,
-                 check             = False,
-                 checkWindow       = None,
-                 database          = '.files.dat',
-                 days              = -1.0,
-                 depth             = -1,
-                 dryrun            = False,
-                 ignoreFiles       = None,
-                 maxSize           = None,
-                 minimalScan       = False,
-                 mtime             = False,
-                 onEntryAdded      = None,
-                 onEntryChanged    = None,
-                 onEntryRemoved    = None,
-                 onEntryPastLimit  = None,
-                 pruneDirs         = False,
-                 secure            = False,
-                 sort              = False,
-                 sudo              = False,
-                 tempDirectory     = None,
-                 useChecksum       = False,
-                 useChecksumAlways = False):
+    def __init__(
+        self,
+        directory=None,
+        ages=False,  # this is a very odd option
+        atime=False,
+        cacheAttrs=False,
+        check=False,
+        checkWindow=None,
+        database=".files.dat",
+        days=-1.0,
+        depth=-1,
+        dryrun=False,
+        ignoreFiles=None,
+        maxSize=None,
+        minimalScan=False,
+        mtime=False,
+        onEntryAdded=None,
+        onEntryChanged=None,
+        onEntryRemoved=None,
+        onEntryPastLimit=None,
+        pruneDirs=False,
+        secure=False,
+        sort=False,
+        sudo=False,
+        tempDirectory=None,
+        useChecksum=False,
+        useChecksumAlways=False,
+    ):
 
         # Check the validity of all arguments and their types (if applicable)
 
         if not directory:
             msg = "`directory' must be a valid directory"
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
 
         d = expanduser(directory)
         if d != directory:
@@ -510,27 +518,31 @@ class DirScanner(object):
 
         if not isdir(directory):
             msg = "Directory '%s' is not a valid directory" % directory
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
 
         if not os.access(directory, os.R_OK | os.X_OK):
             msg = "Directory '%s' is not readable or not searchable" % directory
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
 
         if not ignoreFiles:
             l.debug("Initializing `ignoreFiles' to []")
-            ignoreFiles = [r'^\.files\.dat$', r'^\.DS_Store$', r'^\.localized$']
+            ignoreFiles = [r"^\.files\.dat$", r"^\.DS_Store$", r"^\.localized$"]
 
         if not isinstance(ignoreFiles, list):
             msg = "`ignoreFiles' must be of list type"
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
 
         if not database:
-            database = '.files.dat'
+            database = ".files.dat"
             l.debug(f"Setting database name to '{database}'")
 
         if not isinstance(database, str):
             msg = "`database' must be of string type"
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
 
         if os.sep not in database:
             database = join(directory, database)
@@ -539,47 +551,48 @@ class DirScanner(object):
         if minimalScan and depth != 0:
             l.warning("Using minimalScan when depth != 0 may cause problems")
 
-        self.ages              = ages
-        self.atime             = atime
-        self.cacheAttrs        = cacheAttrs
-        self.check             = check
-        self.checkWindow       = checkWindow
-        self.database          = database
-        self.days              = days
-        self.depth             = depth
-        self.directory         = directory
-        self.dryrun            = dryrun
-        self.ignoreFiles       = ignoreFiles
-        self.maxSize           = None
-        self.minimalScan       = minimalScan
-        self.mtime             = mtime
-        self.onEntryAdded      = onEntryAdded
-        self.onEntryChanged    = onEntryChanged
-        self.onEntryRemoved    = onEntryRemoved
-        self.onEntryPastLimit  = onEntryPastLimit
-        self.pruneDirs         = pruneDirs
-        self.secure            = secure
-        self.sort              = sort
-        self.sudo              = sudo
-        self.tempDirectory     = tempDirectory
-        self.useChecksum       = useChecksum or useChecksumAlways
+        self.ages = ages
+        self.atime = atime
+        self.cacheAttrs = cacheAttrs
+        self.check = check
+        self.checkWindow = checkWindow
+        self.database = database
+        self.days = days
+        self.depth = depth
+        self.directory = directory
+        self.dryrun = dryrun
+        self.ignoreFiles = ignoreFiles
+        self.maxSize = None
+        self.minimalScan = minimalScan
+        self.mtime = mtime
+        self.onEntryAdded = onEntryAdded
+        self.onEntryChanged = onEntryChanged
+        self.onEntryRemoved = onEntryRemoved
+        self.onEntryPastLimit = onEntryPastLimit
+        self.pruneDirs = pruneDirs
+        self.secure = secure
+        self.sort = sort
+        self.sudo = sudo
+        self.tempDirectory = tempDirectory
+        self.useChecksum = useChecksum or useChecksumAlways
         self.useChecksumAlways = useChecksumAlways
 
         if maxSize:
-            if re.match('^[0-9]+$', maxSize):
+            if re.match("^[0-9]+$", maxSize):
                 self.maxSize = int(maxSize)
             else:
-                match = re.match('^([0-9]+)%$', maxSize)
+                match = re.match("^([0-9]+)%$", maxSize)
                 if match:
                     info = os.statvfs(directory)
-                    self.maxSize = int((info.f_frsize * info.f_blocks) *
-                                        (float(match.group(1))) / 100.0)
+                    self.maxSize = int(
+                        (info.f_frsize * info.f_blocks) * (float(match.group(1))) / 100.0
+                    )
                 else:
                     l.error("maxSize parameter is incorrect")
 
     def loadState(self):
         self._entries = {}
-        self._dirty   = False
+        self._dirty = False
         self._dbMtime = None
 
         if not isfile(self.database):
@@ -591,7 +604,7 @@ class DirScanner(object):
 
         l.debug(f"Loading state data from '{self.database}'")
 
-        with open(self.database, 'rb') as fd:
+        with open(self.database, "rb") as fd:
             l.debug(f"Acquiring shared lock on '{self.database}'...")
             flock(fd, LOCK_SH)
             l.debug("Lock acquired")
@@ -624,9 +637,12 @@ class DirScanner(object):
         self._dbMtime = datetime.fromtimestamp(os.stat(self.database)[ST_MTIME])
 
     def saveState(self, tempDirectory: Optional[str] = None) -> None:
-        if not self.database: return
-        if not self._dirty: return
-        if self.dryrun: return
+        if not self.database:
+            return
+        if not self._dirty:
+            return
+        if self.dryrun:
+            return
 
         databaseDir = dirname(self.database)
 
@@ -647,7 +663,7 @@ class DirScanner(object):
             database = self.database
         l.debug(f"Writing updated state data to '{database}'")
 
-        with open(database, 'wb') as fd:
+        with open(database, "wb") as fd:
             l.debug(f"Acquiring exclusive lock on '{database}'...")
             flock(fd, LOCK_EX)
             l.debug("Lock acquired")
@@ -661,13 +677,14 @@ class DirScanner(object):
                 flock(fd, LOCK_UN)
                 l.debug("Lock released")
 
-        self._dirty   = False
+        self._dirty = False
         self._dbMtime = datetime.fromtimestamp(os.stat(database)[ST_MTIME])
 
     def registerEntryClass(self, entryClass):
         if not issubclass(entryClass, Entry):
             msg = "`entryClass' must be a class type derived from dirscan.Entry"
-            l.exception(msg); raise InvalidArgumentException(msg)
+            l.exception(msg)
+            raise InvalidArgumentException(msg)
 
         self._entryClass = entryClass
 
@@ -699,8 +716,10 @@ class DirScanner(object):
             changed = self.check and entry.contentsHaveChanged()
 
             if changed or entry.timestampHasChanged():
-                l.debug(f"Entry '{entry}' {'content' if changed else 'timestamp'} seems to have changed")
-                if entry.onEntryChanged(contentsChanged = changed):
+                l.debug(
+                    f"Entry '{entry}' {'content' if changed else 'timestamp'} seems to have changed"
+                )
+                if entry.onEntryChanged(contentsChanged=changed):
                     self._dirty = True
 
             # Delete this path from the `shadow' dictionary, since we've
@@ -716,7 +735,7 @@ class DirScanner(object):
 
             if self.days >= 0:
                 delta = rightNow - entry.timestamp
-                age   = float(delta.days) + float(delta.seconds) / 86400.0
+                age = float(delta.days) + float(delta.seconds) / 86400.0
 
                 # The `ages' option, if True, means that we are just to print
                 # out the ages of all entries -- don't do any deleting or
@@ -741,8 +760,7 @@ class DirScanner(object):
             # and if it's now empty. If so, and if the `pruneDirs' option is
             # True, then delete the directory.
 
-            if self.pruneDirs and isdir(entry.path) and \
-               not os.listdir(entry.path):
+            if self.pruneDirs and isdir(entry.path) and not os.listdir(entry.path):
                 l.info(f"Pruning directory '{entry}'")
                 entry.remove()
 
@@ -778,10 +796,10 @@ class DirScanner(object):
 
         return (size, size_map)
 
-    def _scanEntries(self, path, depth = 0):
+    def _scanEntries(self, path, depth=0):
         "This is the worker task for scanEntries, called for each directory."
 
-        #l.debug(f"Scanning {path} ...")
+        # l.debug(f"Scanning {path} ...")
         try:
             items = os.listdir(path)
             if self.sort:
@@ -799,12 +817,12 @@ class DirScanner(object):
                     ignored = True
                     break
             if ignored:
-                #l.debug(f"Ignoring file '{entryPath}'")
+                # l.debug(f"Ignoring file '{entryPath}'")
                 if entryPath in self._entries:
                     l.debug(f"Entry '{entryPath}' removed due to being ignored")
                     del self._entries[entryPath]
                     for key in list(self._entries.keys()):
-                        if key.startswith(entryPath + '/'):
+                        if key.startswith(entryPath + "/"):
                             l.debug(f"Entry '{key}' removed due to being ignored")
                             del self._entries[key]
                     self._dirty = True
@@ -820,9 +838,12 @@ class DirScanner(object):
             # which allows us to prune directories as they empty out (if
             # `prune' is True). The pruning is done at the end of `scanEntry'.
 
-            if entry.exists() and entry.isDirectory() and \
-               (self.depth < 0 or depth < self.depth) and \
-               entry.shouldEnterDirectory():
+            if (
+                entry.exists()
+                and entry.isDirectory()
+                and (self.depth < 0 or depth < self.depth)
+                and entry.shouldEnterDirectory()
+            ):
                 self._scanEntries(entryPath, depth + 1)
 
             self._scanEntry(entry)
@@ -836,8 +857,7 @@ class DirScanner(object):
         if self.tempDirectory:
             database = join(self.tempDirectory, basename(self.database))
             if isfile(database):
-                run(f'sudo /bin/cp -p %s "{self.database}"',
-                    database, self.dryrun)
+                run(f'sudo /bin/cp -p %s "{self.database}"', database, self.dryrun)
                 delfile(database)
 
     def scanEntries(self):
@@ -954,16 +974,20 @@ class DirScanner(object):
             assert isdir(self.directory)
             assert os.access(self.directory, os.R_OK | os.X_OK)
 
-            info     = os.stat(self.directory)
+            info = os.stat(self.directory)
             dirMtime = datetime.fromtimestamp(info[ST_MTIME])
 
             if self._dbMtime >= dirMtime:
                 scandir = False
 
             if scandir:
-                l.info(f"Database mtime {self._dbMtime} < directory {dirMtime}, will scan filesystem")
+                l.info(
+                    f"Database mtime {self._dbMtime} < directory {dirMtime}, will scan filesystem"
+                )
             else:
-                l.info(f"Database mtime {self._dbMtime} >= directory {dirMtime}, skipping filesystem scan (will still check ages of existing entries)")
+                l.info(
+                    f"Database mtime {self._dbMtime} >= directory {dirMtime}, skipping filesystem scan (will still check ages of existing entries)"
+                )
 
         # If the directory has not changed, we can simply scan the entries in
         # the database without having to refer to disk. Otherwise, either the
@@ -999,7 +1023,9 @@ class DirScanner(object):
         # Report what the oldest file seen was, if debugging
 
         if self._oldest < self.days:
-            l.info(f"No files were beyond the age limit (oldest {self._oldest:.1f}d < {self.days:.1f}d)")
+            l.info(
+                f"No files were beyond the age limit (oldest {self._oldest:.1f}d < {self.days:.1f}d)"
+            )
 
         # Compute the sizes of all files in the directory (if it has changed
         # at all), to see if we're over the overall limit.  If so, first
@@ -1009,7 +1035,9 @@ class DirScanner(object):
         if self.maxSize and self._dirty:
             total_size, size_map = self.computeSizes()
             if total_size > self.maxSize:
-                l.info(f"Directory exceeds the maximum size ({bytestring(total_size)} > {bytestring(self.maxSize)})")
+                l.info(
+                    f"Directory exceeds the maximum size ({bytestring(total_size)} > {bytestring(self.maxSize)})"
+                )
 
                 sizes = list(size_map.keys())
                 sizes.sort()
@@ -1023,9 +1051,11 @@ class DirScanner(object):
 
                 for size in sizes:
                     entries = size_map[size]
-                    entries.sort(key = attrgetter('timestamp'))
+                    entries.sort(key=attrgetter("timestamp"))
                     for entry in entries:
-                        l.info(f"Purging entry {entry.path} to reduce size (saves {bytestring(size)})")
+                        l.info(
+                            f"Purging entry {entry.path} to reduce size (saves {bytestring(size)})"
+                        )
 
                         safeRemove(entry)
                         total_size -= size
@@ -1035,10 +1065,14 @@ class DirScanner(object):
                             break
 
                     if total_size <= self.maxSize:
-                        l.info(f"Directory is now within size limits ({bytestring(total_size)} <= {bytestring(self.maxSize)})")
+                        l.info(
+                            f"Directory is now within size limits ({bytestring(total_size)} <= {bytestring(self.maxSize)})"
+                        )
                         break
             else:
-                l.info(f"Directory is within size limits ({bytestring(total_size)} <= {bytestring(self.maxSize)})")
+                l.info(
+                    f"Directory is within size limits ({bytestring(total_size)} <= {bytestring(self.maxSize)})"
+                )
 
         # If any changes have been made to the state database, write those
         # changes out before exiting.
@@ -1157,112 +1191,112 @@ Broken down piece by piece:
 def processOptions(argv):
     "Process the command-line options."
     longOpts = [
-        'ages',                         # -A
-        'atime',                        # -a
-        'check',                        # -R
-        'check-window=',
-        'database=',                    # -b
-        'days=',                        # -w
-        'depth=',                       # -D
-        'directory=',                   # -d
-        'dryrun',                       # -n
-        'help',                         # -h
-        'mtime',                        # -m
-        'onadded=',
-        'onchanged=',
-        'onpastlimit=',                 # -F
-        'onremoved=',
-        'prune-dirs',                   # -p
-        'minimal-scan',                 # -z
-        'secure',                       # -S
-        'sort',                         # -o
-        'status',                       # -u
-        'sudo',                         # -s
-        'checksum',
-        'checksum-always',
-        'verbose',                      # -v
-        'version' ]                     # -V
+        "ages",  # -A
+        "atime",  # -a
+        "check",  # -R
+        "check-window=",
+        "database=",  # -b
+        "days=",  # -w
+        "depth=",  # -D
+        "directory=",  # -d
+        "dryrun",  # -n
+        "help",  # -h
+        "mtime",  # -m
+        "onadded=",
+        "onchanged=",
+        "onpastlimit=",  # -F
+        "onremoved=",
+        "prune-dirs",  # -p
+        "minimal-scan",  # -z
+        "secure",  # -S
+        "sort",  # -o
+        "status",  # -u
+        "sudo",  # -s
+        "checksum",
+        "checksum-always",
+        "verbose",  # -v
+        "version",
+    ]  # -V
 
     try:
-        opts = getopt(argv, 'AaRb:w:D:d:nhmF:pzST:ousvV', longOpts)[0]
+        opts = getopt(argv, "AaRb:w:D:d:nhmF:pzST:ousvV", longOpts)[0]
     except GetoptError:
         usage()
         sys.exit(2)
 
     options = {
-        'directory':        expanduser('~/.Trash'),
-        'depth':            0,
-        'days':             7,
-        'onEntryPastLimit': safeRemove
+        "directory": expanduser("~/.Trash"),
+        "depth": 0,
+        "days": 7,
+        "onEntryPastLimit": safeRemove,
     }
 
     for o, a in opts:
-        if o in ('-h', '--help'):
+        if o in ("-h", "--help"):
             usage()
             sys.exit(0)
-        elif o in ('-V', '--version'):
+        elif o in ("-V", "--version"):
             showVersion()
             sys.exit(0)
 
-        elif o in ('-A', '--ages'):
-            options['ages']            = True
-        elif o in ('-a', '--atime'):
-            options['atime']           = True
-        elif o in ('-C', '--cache-attrs'):
-            options['cacheAttrs']      = True
-        elif o in ('-R', '--check'):
-            options['check']           = True
-            options['minimalScan']     = False
-        elif o in ('--check-window'):
-            options['checkWindow']     = int(a)
-        elif o in ('-b', '--database'):
-            options['database']        = a
-        elif o in ('-w', '--days'):
-            options['days']            = float(a)
-            options['database']        = a
-        elif o in ('-D', '--depth'):
-            options['depth']           = int(a)
-        elif o in ('-d', '--directory'):
-            options['directory']       = expanduser(a)
-        elif o in ('-n', '--dryrun'):
-            options['dryrun']          = True
-        elif o in ('-m', '--mtime'):
-            options['mtime']           = True
-        elif o in ('--onadded'):
-            options['onEntryAdded']     = a
-        elif o in ('--onchanged'):
-            options['onEntryChanged']   = a
-        elif o in ('-F', '--onpastlimit'):
-            options['onEntryPastLimit'] = a
-        elif o in ('--onremoved'):
-            options['onEntryRemoved']   = a
-        elif o in ('-p', '--prune-dirs'):
-            options['pruneDirs']       = True
-        elif o in ('-z', '--minimal-scan'):
-            options['minimalScan']     = True
-        elif o in ('-M', '--max-size'):
-            options['maxSize']         = a
-        elif o in ('-S', '--secure'):
-            options['secure']          = True
-        elif o in ('-o', '--sort'):
-            options['sort']            = True
-        elif o in ('-u', '--status'):
-            l.basicConfig(level = l.INFO, format = '%(message)s')
-        elif o in ('--checksum'):
-            options['useChecksum']     = True
-        elif o in ('--checksum-always'):
-            options['useChecksum']       = True
-            options['useChecksumAlways'] = True
-        elif o in ('-s', '--sudo'):
-            options['sudo']            = True
-        elif o in ('-v', '--verbose'):
-            l.basicConfig(level = l.DEBUG,
-                          format = '[%(levelname)s] %(message)s')
+        elif o in ("-A", "--ages"):
+            options["ages"] = True
+        elif o in ("-a", "--atime"):
+            options["atime"] = True
+        elif o in ("-C", "--cache-attrs"):
+            options["cacheAttrs"] = True
+        elif o in ("-R", "--check"):
+            options["check"] = True
+            options["minimalScan"] = False
+        elif o in ("--check-window"):
+            options["checkWindow"] = int(a)
+        elif o in ("-b", "--database"):
+            options["database"] = a
+        elif o in ("-w", "--days"):
+            options["days"] = float(a)
+            options["database"] = a
+        elif o in ("-D", "--depth"):
+            options["depth"] = int(a)
+        elif o in ("-d", "--directory"):
+            options["directory"] = expanduser(a)
+        elif o in ("-n", "--dryrun"):
+            options["dryrun"] = True
+        elif o in ("-m", "--mtime"):
+            options["mtime"] = True
+        elif o in ("--onadded"):
+            options["onEntryAdded"] = a
+        elif o in ("--onchanged"):
+            options["onEntryChanged"] = a
+        elif o in ("-F", "--onpastlimit"):
+            options["onEntryPastLimit"] = a
+        elif o in ("--onremoved"):
+            options["onEntryRemoved"] = a
+        elif o in ("-p", "--prune-dirs"):
+            options["pruneDirs"] = True
+        elif o in ("-z", "--minimal-scan"):
+            options["minimalScan"] = True
+        elif o in ("-M", "--max-size"):
+            options["maxSize"] = a
+        elif o in ("-S", "--secure"):
+            options["secure"] = True
+        elif o in ("-o", "--sort"):
+            options["sort"] = True
+        elif o in ("-u", "--status"):
+            l.basicConfig(level=l.INFO, format="%(message)s")
+        elif o in ("--checksum"):
+            options["useChecksum"] = True
+        elif o in ("--checksum-always"):
+            options["useChecksum"] = True
+            options["useChecksumAlways"] = True
+        elif o in ("-s", "--sudo"):
+            options["sudo"] = True
+        elif o in ("-v", "--verbose"):
+            l.basicConfig(level=l.DEBUG, format="[%(levelname)s] %(message)s")
 
     return options
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) == 1:
         usage()
         sys.exit(2)
@@ -1270,7 +1304,7 @@ if __name__ == '__main__':
     assert len(sys.argv) > 1
     userOptions = processOptions(sys.argv[1:])
 
-    if not isdir(userOptions['directory']):
+    if not isdir(userOptions["directory"]):
         sys.stderr.write(f"The directory '{userOptions['directory']}' does not exist")
         sys.exit(1)
 
