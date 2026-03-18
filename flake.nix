@@ -44,10 +44,31 @@
           nativeBuildInputs = [ pkgs.makeWrapper ];
           dontBuild = true;
           installPhase = ''
-            mkdir -p $out/lib $out/bin
-            cp dirscan.py $out/lib/
+            mkdir -p $out/lib/python $out/bin
+
+            # Install dirscan as an importable module
+            cp dirscan.py $out/lib/python/
+
+            # Install executable scripts
+            cp cleanup verify.py share.py $out/lib/
+
+            # Create wrapper for dirscan CLI
             makeWrapper ${python}/bin/python3 $out/bin/dirscan \
-              --add-flags "$out/lib/dirscan.py"
+              --prefix PYTHONPATH : "$out/lib/python" \
+              --add-flags "$out/lib/python/dirscan.py"
+
+            # Create wrappers for helper scripts
+            makeWrapper ${python}/bin/python3 $out/bin/cleanup \
+              --prefix PYTHONPATH : "$out/lib/python" \
+              --add-flags "$out/lib/cleanup"
+
+            makeWrapper ${python}/bin/python3 $out/bin/verify \
+              --prefix PYTHONPATH : "$out/lib/python" \
+              --add-flags "$out/lib/verify.py"
+
+            makeWrapper ${python}/bin/python3 $out/bin/share \
+              --prefix PYTHONPATH : "$out/lib/python" \
+              --add-flags "$out/lib/share.py"
           '';
         };
 
