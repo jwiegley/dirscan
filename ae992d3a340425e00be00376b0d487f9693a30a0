@@ -1,0 +1,23 @@
+flake.nix
+  33b9fca4031e8f5c 47-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.18",
+  "base_commit_sha": "ae992d3a340425e00be00376b0d487f9693a30a0",
+  "prompts": {
+    "33b9fca4031e8f5c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "96dfef8c-22a0-43a0-b99b-33b69de4a565",
+        "model": "<synthetic>"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    }
+  }
+}
