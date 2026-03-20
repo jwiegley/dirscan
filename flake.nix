@@ -36,39 +36,29 @@
         '';
 
       in {
-        packages.default = pkgs.stdenv.mkDerivation {
+        packages.default = python.pkgs.buildPythonApplication {
           pname = "dirscan";
           version = "2.0.0";
           inherit src;
-          buildInputs = [ python ];
-          nativeBuildInputs = [ pkgs.makeWrapper ];
-          dontBuild = true;
-          installPhase = ''
-            mkdir -p $out/lib/python $out/bin
+          format = "other";
 
-            # Install dirscan as an importable module
-            cp dirscan.py $out/lib/python/
+          nativeBuildInputs = [ python.pkgs.wrapPython ];
+
+          installPhase = ''
+            runHook preInstall
+
+            # Install dirscan as an importable module in site-packages
+            mkdir -p $out/${python.sitePackages}
+            cp dirscan.py $out/${python.sitePackages}/
 
             # Install executable scripts
-            cp cleanup verify.py share.py $out/lib/
+            mkdir -p $out/bin
+            cp cleanup $out/bin/
+            cp verify.py $out/bin/verify
+            cp share.py $out/bin/share
+            cp dirscan.py $out/bin/dirscan
 
-            # Create wrapper for dirscan CLI
-            makeWrapper ${python}/bin/python3 $out/bin/dirscan \
-              --prefix PYTHONPATH : "$out/lib/python" \
-              --add-flags "$out/lib/python/dirscan.py"
-
-            # Create wrappers for helper scripts
-            makeWrapper ${python}/bin/python3 $out/bin/cleanup \
-              --prefix PYTHONPATH : "$out/lib/python" \
-              --add-flags "$out/lib/cleanup"
-
-            makeWrapper ${python}/bin/python3 $out/bin/verify \
-              --prefix PYTHONPATH : "$out/lib/python" \
-              --add-flags "$out/lib/verify.py"
-
-            makeWrapper ${python}/bin/python3 $out/bin/share \
-              --prefix PYTHONPATH : "$out/lib/python" \
-              --add-flags "$out/lib/share.py"
+            runHook postInstall
           '';
         };
 

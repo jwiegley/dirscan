@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # dirscan.py, version 2.0
 # Python 3.8+ required for modern type hints
 
