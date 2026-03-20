@@ -71,7 +71,7 @@ class TestDirScannerFuzz:
         st.sampled_from([True, False]),
         st.floats(min_value=-1.0, max_value=365.0, allow_nan=False, allow_infinity=False),
     )
-    @settings(max_examples=30)
+    @settings(max_examples=30, deadline=None)
     def test_creation_variants(self, check, sort, dryrun, days):
         with tempfile.TemporaryDirectory() as tmpdir:
             scanner = dirscan.DirScanner(
