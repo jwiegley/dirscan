@@ -44,6 +44,15 @@
 
           nativeBuildInputs = [ python.pkgs.wrapPython ];
 
+          # Prevent Python from writing .pyc bytecode cache files into the
+          # Nix store.  On macOS the store is not mounted read-only, so
+          # without this the import of dirscan.py creates __pycache__/
+          # inside the store path, silently corrupting its NAR hash and
+          # breaking substitution to other machines.
+          makeWrapperArgs = [
+            "--set" "PYTHONDONTWRITEBYTECODE" "1"
+          ];
+
           installPhase = ''
             runHook preInstall
 
