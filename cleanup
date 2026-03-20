@@ -20,7 +20,8 @@ debug = False
 status = False
 opts = {"dryrun": False, "ages": False}
 
-lockfile = open("/tmp/cleanup.lock", "wb")
+_lockpath = join(os.environ.get("TMPDIR", "/tmp"), "cleanup.lock")
+lockfile = open(_lockpath, "wb")
 flock(lockfile, LOCK_EX)
 
 if len(sys.argv) > 1:
@@ -156,7 +157,7 @@ if not args or "backups" in args:
             ).scanEntries()
 
 flock(lockfile, LOCK_UN)
-os.remove("/tmp/cleanup.lock")
+os.remove(_lockpath)
 
 sys.exit(0)
 
