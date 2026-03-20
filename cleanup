@@ -15,6 +15,14 @@ from stat import *
 
 from dirscan import *
 
+
+def scan(**kwargs):
+    try:
+        DirScanner(**kwargs).scanEntries()
+    except (InvalidArgumentException, PermissionError) as e:
+        l.warning(f"Skipping {kwargs.get('directory', '?')}: {e}")
+
+
 args = None
 debug = False
 status = False
@@ -40,7 +48,7 @@ if len(sys.argv) > 1:
             opts["ages"] = True
 
 if not args or "trash" in args:
-    DirScanner(
+    scan(
         directory="/Users/johnw/.Trash",
         days=28,
         mtime=True,
@@ -51,10 +59,10 @@ if not args or "trash" in args:
         minimalScan=True,
         onEntryPastLimit=safeRemove,
         **opts,
-    ).scanEntries()
+    )
 
     if isdir("/.Trashes/501"):
-        DirScanner(
+        scan(
             directory="/.Trashes/501",
             days=28,
             mtime=True,
@@ -65,10 +73,10 @@ if not args or "trash" in args:
             minimalScan=True,
             onEntryPastLimit=safeRemove,
             **opts,
-        ).scanEntries()
+        )
 
     if isdir("/Users/johnw/Library/Mobile Documents/.Trash"):
-        DirScanner(
+        scan(
             directory="/Users/johnw/Library/Mobile Documents/.Trash",
             days=28,
             mtime=True,
@@ -79,12 +87,12 @@ if not args or "trash" in args:
             minimalScan=True,
             onEntryPastLimit=safeRemove,
             **opts,
-        ).scanEntries()
+        )
 
     for name in os.listdir("/Volumes"):
         path = join("/Volumes", name, ".Trashes", "501")
         if exists(path):
-            DirScanner(
+            scan(
                 directory=path,
                 days=28,
                 mtime=True,
@@ -95,13 +103,13 @@ if not args or "trash" in args:
                 minimalScan=True,
                 onEntryPastLimit=safeRemove,
                 **opts,
-            ).scanEntries()
+            )
 
     if isdir("/Volumes/tank"):
         for name in os.listdir("/Volumes/tank"):
             path = join("/Volumes", "tank", name, ".Trashes", "501")
             if exists(path):
-                DirScanner(
+                scan(
                     directory=path,
                     days=28,
                     mtime=True,
@@ -112,11 +120,11 @@ if not args or "trash" in args:
                     minimalScan=True,
                     onEntryPastLimit=safeRemove,
                     **opts,
-                ).scanEntries()
+                )
 
 if not args or "backups" in args:
     if exists("/Users/johnw/.cache/emacs/backups"):
-        DirScanner(
+        scan(
             directory="/Users/johnw/.cache/emacs/backups",
             days=28,
             mtime=True,
@@ -126,10 +134,10 @@ if not args or "backups" in args:
             minimalScan=True,
             onEntryPastLimit=safeRemove,
             **opts,
-        ).scanEntries()
+        )
 
     if exists("/Users/johnw/.cache/iTerm2/logs"):
-        DirScanner(
+        scan(
             directory="/Users/johnw/.cache/iTerm2/logs",
             days=28,
             mtime=True,
@@ -139,12 +147,12 @@ if not args or "backups" in args:
             minimalScan=True,
             onEntryPastLimit=safeRemove,
             **opts,
-        ).scanEntries()
+        )
 
     for name in os.listdir("/Volumes"):
         path = join("/Volumes", name, ".backups")
         if exists(path):
-            DirScanner(
+            scan(
                 directory=path,
                 days=28,
                 mtime=True,
@@ -154,7 +162,7 @@ if not args or "backups" in args:
                 minimalScan=True,
                 onEntryPastLimit=safeRemove,
                 **opts,
-            ).scanEntries()
+            )
 
 flock(lockfile, LOCK_UN)
 os.remove(_lockpath)
