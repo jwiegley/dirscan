@@ -6,10 +6,12 @@ import logging as l
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 from datetime import *
 from fcntl import LOCK_EX, LOCK_SH, LOCK_UN, flock
+from glob import glob
 from os.path import *
 from stat import *
 
@@ -163,6 +165,67 @@ if not args or "backups" in args:
                 onEntryPastLimit=safeRemove,
                 **opts,
             )
+
+if not args or "nixcache" in args:
+    # Nix fetches flake inputs through libgit2, which never repacks these
+    # bare-repo caches, so pack files pile up unbounded. Once a fetch must
+    # open more packs at once than the per-process fd limit allows, it dies
+    # with "Too many open files". Delete a cache repo wholesale when it
+    # exceeds PACK_LIMIT packs (nix rebuilds it on demand). tarball-cache is
+    # a single repo; gitv3 holds one bare repo per remote URL, so trim each.
+    PACK_LIMIT = 50
+
+    def trim_git_cache(repo):
+        if not isdir(repo):
+            return
+        packs = len(glob(join(repo, "**", "*.pack"), recursive=True))
+        if packs > PACK_LIMIT:
+            l.info("nixcache: %s has %d packs (> %d) - removing", repo, packs, PACK_LIMIT)
+            if not opts["dryrun"]:
+                shutil.rmtree(repo, ignore_errors=True)
+        else:
+            l.debug("nixcache: %s has %d packs (ok)", repo, packs)
+
+    trim_git_cache("/Users/johnw/.cache/nix/tarball-cache")
+    gitv3 = "/Users/johnw/.cache/nix/gitv3"
+    if isdir(gitv3):
+        for entry in sorted(os.listdir(gitv3)):
+            trim_git_cache(join(gitv3, entry))
+
+if not args or "fdcheck" in args:
+    # We hit per-process EMFILE far more than system-wide exhaustion, so log a
+    # daily file-descriptor health snapshot: system file-table usage plus the
+    # heaviest fd consumers. A process whose count climbs across runs here is
+    # the early warning for a leak (which deletion cannot fix).
+    try:
+        sysctl = "/usr/sbin/sysctl"
+        num_files = int(subprocess.check_output([sysctl, "-n", "kern.num_files"], text=True))
+        maxfiles = int(subprocess.check_output([sysctl, "-n", "kern.maxfiles"], text=True))
+        l.info("fdcheck: system file table %d / %d (%.1f%% used)",
+               num_files, maxfiles, 100.0 * num_files / maxfiles)
+    except (OSError, ValueError, subprocess.CalledProcessError) as e:
+        l.warning("fdcheck: sysctl failed: %s", e)
+
+    try:
+        # lsof commonly exits non-zero (permission denied on some fds) while
+        # still printing useful output, so take stdout regardless of rc.
+        lsof = subprocess.run(
+            ["/usr/sbin/lsof", "-nP"], stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True
+        ).stdout
+        # Count only real descriptors (numeric FD column, e.g. "12u"); skip
+        # cwd/txt/mem/rtd mmap entries, which don't count against the limit.
+        fd_re = re.compile(r"^\d+[rwu]?$")
+        counts = {}
+        for line in lsof.splitlines()[1:]:
+            f = line.split(None, 4)  # COMMAND PID USER FD TYPE ...
+            if len(f) >= 4 and fd_re.match(f[3]):
+                key = (f[1], f[0])  # (pid, command)
+                counts[key] = counts.get(key, 0) + 1
+        for (pid, cmd), n in sorted(counts.items(), key=lambda kv: -kv[1])[:15]:
+            l.info("fdcheck: %6d fds  pid %-7s %s", n, pid, cmd)
+    except (OSError, subprocess.CalledProcessError) as e:
+        l.warning("fdcheck: lsof failed: %s", e)
 
 flock(lockfile, LOCK_UN)
 os.remove(_lockpath)
