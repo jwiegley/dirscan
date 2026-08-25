@@ -91,6 +91,20 @@ if not args or "trash" in args:
             **opts,
         )
 
+    if isdir("/Users/johnw/Products"):
+        scan(
+            directory="/Users/johnw/Products",
+            days=28,
+            mtime=True,
+            cacheAttrs=True,
+            maxSize="1%",
+            sudo=True,
+            depth=0,
+            minimalScan=True,
+            onEntryPastLimit=safeRemove,
+            **opts,
+        )
+
     for name in os.listdir("/Volumes"):
         path = join("/Volumes", name, ".Trashes", "501")
         if exists(path):
