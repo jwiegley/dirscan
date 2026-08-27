@@ -97,7 +97,7 @@ if not args or "trash" in args:
             days=28,
             mtime=True,
             cacheAttrs=True,
-            maxSize="1%",
+            maxSize="20%",
             sudo=True,
             depth=0,
             minimalScan=True,
